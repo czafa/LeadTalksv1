@@ -1,13 +1,15 @@
-module.exports = async (req, res) => {
+import fetch from "node-fetch";
+
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
 
   const { numero, mensagem } = req.body;
+  const API_WHATSAPP_CORE_URL = process.env.API_WHATSAPP_CORE_URL;
 
-  // aqui você pode repassar para o whatsapp-core
   try {
-    const resposta = await fetch("http://ip-da-vm:3000/api/enviar", {
+    const resposta = await fetch(`${API_WHATSAPP_CORE_URL}/enviar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ numero, mensagem }),
@@ -19,4 +21,4 @@ module.exports = async (req, res) => {
     console.error("Erro no envio:", e);
     return res.status(500).json({ error: "Falha ao enviar mensagem" });
   }
-};
+}

@@ -2,7 +2,10 @@ import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   try {
-    const resposta = await fetch("http://IP_DA_VM:3000/api/qr");
+    const API_WHATSAPP_CORE_URL = process.env.API_WHATSAPP_CORE_URL;
+
+    const resposta = await fetch(`${API_WHATSAPP_CORE_URL}/qr`);
+
     const qrData = await resposta.json();
     return res.status(200).json(qrData);
   } catch (e) {
