@@ -18,9 +18,15 @@ export default function Home() {
 
   useEffect(() => {
     const fetchContatos = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      if (!userId) return;
+
       const { data, error } = await supabase
         .from("contatos")
-        .select("id, nome, numero");
+        .select("id, nome, numero")
+        .eq("usuario_id", userId);
 
       if (error) {
         console.error("Erro ao carregar contatos:", error);

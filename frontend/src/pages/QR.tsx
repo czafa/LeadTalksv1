@@ -23,7 +23,7 @@ export default function QR() {
 
       const { data: sessao } = await supabase
         .from("sessao")
-        .select("ativo")
+        .select("ativo", { head: false })
         .eq("usuario_id", user.id)
         .single();
 
