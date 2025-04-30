@@ -5,7 +5,7 @@
 /whatsapp-core/.env
 /whatsapp-core/auth
 /whatsapp-core/data
-/whatsapp-core/logs
+/whatsapp-core/Logs
 /whatsapp-core/temp
 
 # node_modules
@@ -30,8 +30,10 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# Ignorar chaves SSH e arquivos sensíveis
+
+# Ignorar arquivos de chave SSH
 *.key
-*.pem
+*.key.pub
+*.key:Zone.Identifier
 ssh-key-*
-/whatsapp-core/ssh-key-*
+
