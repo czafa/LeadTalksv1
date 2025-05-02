@@ -1,22 +1,40 @@
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
-  const { user_id } = req.query;
+  const token = req.headers.authorization?.replace("Bearer ", "");
 
-  if (!user_id) {
-    return res.status(400).json({ error: "Faltando user_id" });
+  if (!token) {
+    return res.status(401).json({ error: "Token ausente" });
   }
 
-  const { data, error } = await supabase
-    .from("sessao")
-    .select("ativo")
-    .eq("usuario_id", user_id)
-    .single();
+  try {
+    // Valida o token e obtém o usuário autenticado
+    const { data: userData, error: authError } = await supabase.auth.getUser(
+      token
+    );
 
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Erro ao buscar status da sessão" });
+    if (authError || !userData?.user?.id) {
+      console.error("❌ Erro de autenticação:", authError);
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    const usuario_id = userData.user.id;
+
+    // Consulta segura da sessão do usuário autenticado
+    const { data, error } = await supabase
+      .from("sessao")
+      .select("ativo")
+      .eq("usuario_id", usuario_id)
+      .single();
+
+    if (error) {
+      console.error("❌ Erro Supabase (sessao.js):", error);
+      return res.status(500).json({ error: "Erro ao verificar sessão" });
+    }
+
+    return res.status(200).json({ ativo: data?.ativo || false });
+  } catch (err) {
+    console.error("❌ Erro inesperado (sessao.js):", err);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
-
-  return res.status(200).json(data);
 }

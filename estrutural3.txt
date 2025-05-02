@@ -1,0 +1,69 @@
+.
+├── README.md
+├── backend  (VERCEL)
+│   ├── api
+│   │   ├── contatos.js (PEGA NO SUPABASE)
+│   │   ├── enviar.js (FAZ SOLICITAÇÂO PARA O SERVIDOR LOCAL)
+│   │   ├── grupos.js (PEGA NO SUPABASE)
+│   │   ├── membros-grupos.js (PEGA NO SUPABASE)
+│   │   ├── qr.js (SERVIDOR LOCAL ENVIA PARA SUPABASE - SUPABASE ENVIA PARA FRONT)
+│   │   ├── sessao.js (SUPABASE)
+│   │   ├── start-session.js
+│   │   └── startSender.js
+│   ├── index.js
+│   ├── lib
+│   │   └── supabase.js
+│   ├── node_modules
+│   │
+│   ├── package-lock.json
+│   ├── package.json
+│   └── vercel.json
+├── estrutural3.txt
+├── frontend (VERCEL)
+│   ├── README.md
+│   ├── eslint.config.js
+│   ├── index.css
+│   ├── index.html
+│   ├── node_modules
+
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   └── vite.svg
+│   ├── src
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   ├── components
+│   │   ├── index.css
+│   │   ├── lib
+│   │   ├── main.tsx
+│   │   ├── pages
+│   │   ├── utils
+│   │   └── vite-env.d.ts
+│   ├── tailwind.config.ts
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   ├── vercel.json
+│   └── vite.config.ts
+└── whatsapp-core (RODAR LOCAL)
+    ├── README.md
+    ├── README.md:Zone.Identifier
+    ├── api
+    │   ├── enviar.js
+    │   └── start-session.js
+    ├── auth (ENVIA SUPABASE)
+    ├── auth.js
+    ├── data (ENVIA SUPABASE)
+    ├── ecosystem.config.cjs
+    ├── leadtalks.js
+    ├── node_modules
+    ├── package-lock.json
+    ├── package.json
+    ├── sender.js
+    ├── supabase.js
+    └── temp (QR CODE)
+
+484 directories, 49 files

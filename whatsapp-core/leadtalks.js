@@ -1,4 +1,12 @@
-import { supabase } from "./supabase.js";
+// leadtalks.js
+import dotenv from "dotenv";
+dotenv.config();
+
+import { createClient } from "@supabase/supabase-js";
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(process.env.SUPABASE_URL, SUPABASE_KEY);
+
 import crypto from "crypto";
 globalThis.crypto = crypto.webcrypto;
 
@@ -6,15 +14,19 @@ import {
   makeWASocket,
   useMultiFileAuthState,
   makeInMemoryStore,
+  DisconnectReason,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import P from "pino";
 import fs from "fs";
 
 const isProd = process.env.ENV_MODE === "production";
-
 const DATA_DIR = "./data";
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+let latestQr = null; // Armazena o último QR gerado
+let usuario_id = null;
+let sock = null; // Tornar acessível para server.js
 
 const store = makeInMemoryStore({
   logger: P().child({ level: "silent", stream: "store" }),
@@ -27,7 +39,7 @@ setInterval(() => {
 async function startLeadTalk() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
-  const sock = makeWASocket({
+  sock = makeWASocket({
     auth: state,
     printQRInTerminal: true,
     logger: P({ level: "silent" }),
@@ -37,20 +49,49 @@ async function startLeadTalk() {
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, qr, lastDisconnect } = update;
+
+    if (qr) {
+      latestQr = qr;
+      console.log("[LeadTalk] QR code recebido.");
+
+      const { data: userData } = await supabase.auth.getUser();
+      usuario_id = userData?.user?.id;
+
+      if (usuario_id) {
+        await supabase.from("qr").insert([{ usuario_id, qr }]);
+        console.log("[LeadTalk] QR code salvo no Supabase.");
+      }
+    }
 
     if (connection === "close") {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== 401;
-      console.log("Conexão perdida, tentando reconectar...");
+      const shouldReconnect =
+        (lastDisconnect?.error instanceof Boom &&
+          lastDisconnect?.error?.output?.statusCode !== 401) ||
+        lastDisconnect?.reason !== DisconnectReason.loggedOut;
+
+      console.log("Conexão perdida. Reconectando?", shouldReconnect);
       if (shouldReconnect) startLeadTalk();
     }
 
     if (connection === "open") {
       console.log("[LeadTalk] Conectado com sucesso ao WhatsApp!");
+
+      if (usuario_id) {
+        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+        await supabase
+          .from("sessao")
+          .upsert({ usuario_id, ativo: true }, { onConflict: ["usuario_id"] });
+        console.log("[LeadTalk] Sessão marcada como ativa no Supabase.");
+      }
+
       await exportarContatos();
       await exportarGruposESuasPessoas(sock);
+      await processarFilaMensagens(sock);
     }
   });
+
+  return sock; // Retorna o socket
 }
 
 async function exportarContatos() {
@@ -65,21 +106,16 @@ async function exportarContatos() {
       `${DATA_DIR}/contatos.json`,
       JSON.stringify(contatos, null, 2)
     );
-    console.log(
-      `[LeadTalk] ${contatos.length} contatos salvos em contatos.json`
-    );
+    console.log(`[LeadTalk] ${contatos.length} contatos salvos localmente.`);
   }
 
   const { data: userData } = await supabase.auth.getUser();
   const usuario_id = userData?.user?.id;
 
-  const contatosComUsuario = contatos.map((c) => ({
-    ...c,
-    usuario_id,
-  }));
+  const contatosComUsuario = contatos.map((c) => ({ ...c, usuario_id }));
 
   await supabase.from("contatos").upsert(contatosComUsuario);
-  console.log(`[LeadTalk] ${contatos.length} contatos enviados ao Supabase`);
+  console.log(`[LeadTalk] ${contatos.length} contatos enviados ao Supabase.`);
 }
 
 async function exportarGruposESuasPessoas(sock) {
@@ -123,15 +159,72 @@ async function exportarGruposESuasPessoas(sock) {
       `${DATA_DIR}/membros-grupos.json`,
       JSON.stringify(membrosPorGrupo, null, 2)
     );
-    console.log(`[LeadTalk] Grupos e membros salvos como JSON`);
+    console.log(`[LeadTalk] Grupos e membros salvos como JSON.`);
   }
 
   await supabase.from("grupos").upsert(gruposFormatados);
   await supabase.from("membros_grupos").upsert(membrosPorGrupo);
 
   console.log(
-    `[LeadTalk] ${grupos.length} grupos e participantes enviados ao Supabase`
+    `[LeadTalk] ${grupos.length} grupos e membros enviados ao Supabase.`
   );
 }
 
-startLeadTalk();
+function personalizarMensagem(template, nome) {
+  return template.replace(/{{\s*nome\s*}}/gi, nome);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function processarFilaMensagens(sock) {
+  console.log("[LeadTalk] 🔄 Buscando mensagens na fila...");
+  const { data: mensagens, error } = await supabase
+    .from("queue")
+    .select("*")
+    .eq("enviado", false);
+
+  if (error) {
+    console.error("Erro ao buscar fila:", error);
+    return;
+  }
+
+  if (!mensagens.length) {
+    console.log("[LeadTalk] 🚫 Nenhuma mensagem pendente.");
+    return;
+  }
+
+  for (const msg of mensagens) {
+    const jid = `${msg.numero_destino.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+    const texto = personalizarMensagem(
+      msg.mensagem,
+      msg.nome || msg.numero_destino
+    );
+
+    try {
+      await sock.sendMessage(jid, { text: texto });
+      console.log(`✅ Mensagem enviada para ${msg.numero_destino}`);
+
+      await supabase
+        .from("queue")
+        .update({
+          enviado: true,
+          data_envio: new Date().toISOString(),
+        })
+        .eq("id", msg.id);
+    } catch (err) {
+      console.error(
+        `❌ Erro ao enviar para ${msg.numero_destino}:`,
+        err.message
+      );
+    }
+
+    const espera = 10000 + Math.floor(Math.random() * 5000);
+    await delay(espera);
+  }
+
+  console.log("[LeadTalk] 🏁 Fim da fila de mensagens.");
+}
+
+export { startLeadTalk, latestQr };

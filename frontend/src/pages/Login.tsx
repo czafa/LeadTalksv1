@@ -22,13 +22,22 @@ export default function Login() {
       return;
     }
 
-    const { data: sessao } = await supabase
-      .from("sessao")
-      .select("ativo")
-      .eq("usuario_id", data.user.id)
-      .single();
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
 
-    if (sessao?.ativo) {
+    if (!token) {
+      setErroMsg("❌ Sessão inválida.");
+      return;
+    }
+
+    const response = await fetch("/api/sessao", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const result = await response.json();
+
+    if (result?.ativo) {
       navigate("/home");
     } else {
       navigate("/qr");

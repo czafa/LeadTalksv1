@@ -21,13 +21,22 @@ export default function QR() {
         return;
       }
 
-      const { data: sessao } = await supabase
-        .from("sessao")
-        .select("ativo", { head: false })
-        .eq("usuario_id", user.id)
-        .single();
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-      if (sessao?.ativo) {
+      if (!token) {
+        navigate("/login");
+        return;
+      }
+
+      const response = await fetch("/api/sessao", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+
+      if (result?.ativo) {
         navigate("/home");
         return;
       }
@@ -42,6 +51,7 @@ export default function QR() {
 
     async function carregarQRCode() {
       try {
+        await fetch("/api/start-session"); // ✅ aciona a VM para iniciar o WhatsApp
         const response = await fetch("/api/qr");
         const data = await response.json();
 
