@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { startLeadTalk, latestQr } from "./leadtalks.js";
+import { startLeadTalk } from "./leadtalks.js";
 import { supabase } from "./supabase.js";
 
 dotenv.config();
@@ -11,26 +11,24 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 let socketInstancia = null;
+let ultimoQrCode = null;
 
 // Inicia o processo do WhatsApp ao iniciar o servidor
 (async () => {
-  socketInstancia = await startLeadTalk();
+  socketInstancia = await startLeadTalk({
+    onQr: (qr) => {
+      ultimoQrCode = qr; // Armazena o QR quando for gerado
+    },
+  });
 })();
 
-// Endpoint para retornar o último QR code salvo no Supabase
+// Endpoint para retornar o último QR code diretamente da memória
 app.get("/api/qr", async (req, res) => {
-  const { data, error } = await supabase
-    .from("qr")
-    .select("qr")
-    .order("criado_em", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error || !data) {
-    return res.status(404).json({ error: "QR code não encontrado" });
+  if (ultimoQrCode) {
+    return res.status(200).json({ qr: ultimoQrCode });
+  } else {
+    return res.status(404).json({ error: "QR code ainda não gerado" });
   }
-
-  res.status(200).json({ qr: data.qr });
 });
 
 // Endpoint para envio direto de mensagem via WhatsApp já autenticado
