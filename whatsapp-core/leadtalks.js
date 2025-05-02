@@ -8,7 +8,9 @@ const SUPABASE_KEY =
 const supabase = createClient(process.env.SUPABASE_URL, SUPABASE_KEY);
 
 import crypto from "crypto";
-globalThis.crypto = crypto.webcrypto;
+if (!globalThis.crypto) {
+  globalThis.crypto = crypto.webcrypto;
+}
 
 import {
   makeWASocket,
