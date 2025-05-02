@@ -21,26 +21,36 @@ export default function Login() {
       setErroMsg("❌ Email ou senha inválidos.");
       return;
     }
-
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
+    const token =
+      data.session?.access_token ||
+      (await supabase.auth.getSession()).data.session?.access_token;
 
     if (!token) {
       setErroMsg("❌ Sessão inválida.");
       return;
     }
 
-    const response = await fetch("/api/sessao", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const result = await response.json();
+    const API_URL =
+      import.meta.env.MODE === "development"
+        ? import.meta.env.VITE_API_LOCAL
+        : import.meta.env.VITE_API_URL;
 
-    if (result?.ativo) {
-      navigate("/home");
-    } else {
-      navigate("/qr");
+    try {
+      const response = await fetch(`${API_URL}/sessao`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (result?.ativo) {
+        navigate("/home");
+      } else {
+        navigate("/qr");
+      }
+    } catch (err) {
+      setErroMsg("❌ Falha ao validar sessão.");
     }
   };
 
