@@ -1,6 +1,9 @@
+import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
+  if (applyCors(res, req)) return; // Handle CORS preflight
+
   const { data, error } = await supabase
     .from("membros_grupos")
     .select("grupo_nome, membro_nome, membro_numero");

@@ -1,8 +1,11 @@
 // api/qr.js
+import { applyCors } from "../lib/cors.js";
 import fetch from "node-fetch";
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
+  if (applyCors(res, req)) return; // Handle CORS preflight
+
   try {
     // Busca a URL dinâmica do whatsapp-core via Supabase
     const { data, error } = await supabase

@@ -34,7 +34,7 @@ export default function Login() {
       import.meta.env.MODE === "development"
         ? import.meta.env.VITE_API_LOCAL
         : import.meta.env.VITE_API_URL;
-
+    console.log("URL da API sendo usada:", API_URL);
     try {
       const response = await fetch(`${API_URL}/sessao`, {
         headers: {

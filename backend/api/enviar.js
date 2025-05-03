@@ -1,7 +1,10 @@
 // api/enviar.js
+import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
+  if (applyCors(res, req)) return; // Handle CORS preflight
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
@@ -33,6 +36,7 @@ export default async function handler(req, res) {
     const resultado = await response.json();
     return res.status(response.status).json(resultado);
   } catch (err) {
+    console.error("Erro ao enviar mensagem:", err); // <-- útil
     return res
       .status(500)
       .json({ error: "Erro ao se comunicar com whatsapp-core" });
