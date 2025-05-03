@@ -51,19 +51,35 @@ export default function QR() {
 
     async function carregarQRCode() {
       try {
-        await fetch("/api/start-session"); // ✅ aciona a VM para iniciar o WhatsApp
-        const response = await fetch("/api/qr");
-        const data = await response.json();
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
 
-        if (data.qr && canvasRef.current) {
+        if (!user) {
+          setStatusMsg("⚠️ Usuário não autenticado.");
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("qr")
+          .select("qr")
+          .eq("usuario_id", user.id)
+          .order("created_at", { ascending: false }) // garante o mais recente
+          .limit(1)
+          .single();
+
+        if (error || !data?.qr) {
+          setLoading(false);
+          setStatusMsg("❌ QR code não encontrado.");
+          return;
+        }
+
+        if (canvasRef.current) {
           await QRCode.toCanvas(canvasRef.current, data.qr, { width: 256 });
           setLoading(false);
-        } else {
-          setLoading(false);
-          setStatusMsg("❌ QR code ainda não disponível.");
+          setStatusMsg("✅ QR carregado do Supabase.");
         }
       } catch (err) {
-        console.error("Erro ao carregar QR:", err);
+        console.error("Erro ao carregar QR do Supabase:", err);
         setLoading(false);
         setStatusMsg("❌ Erro ao carregar QR Code.");
       }
