@@ -59,8 +59,7 @@ export async function startLeadTalk() {
         setQrCode(qr);
         console.log("[LeadTalk] QR code recebido.");
 
-        const { data } = await supabase.auth.getUser();
-        usuario_id = data?.user?.id;
+        const usuario_id = process.env.USUARIO_ID;
 
         if (usuario_id) {
           await supabase.from("qr").insert([{ usuario_id, qr }]);

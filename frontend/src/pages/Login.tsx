@@ -24,6 +24,7 @@ export default function Login() {
     const token =
       data.session?.access_token ||
       (await supabase.auth.getSession()).data.session?.access_token;
+    console.log("🔐 Sessão atual:", data.session);
 
     if (!token) {
       setErroMsg("❌ Sessão inválida.");

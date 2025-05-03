@@ -23,6 +23,7 @@ export default function QR() {
 
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
+      console.log("🔐 Sessão atual:", session.data.session);
 
       if (!token) {
         navigate("/login");
