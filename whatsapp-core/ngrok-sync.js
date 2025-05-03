@@ -17,7 +17,7 @@ async function iniciarNgrokEAtualizarSupabase() {
   console.log("🚀 Iniciando ngrok...");
 
   // Inicia o túnel ngrok na porta 3000
-  const ngrokProcess = exec("ngrok http 3000");
+  const ngrokProcess = exec("ngrok http 3001");
 
   // Aguarda o túnel ser criado (tempo seguro: 3s)
   await new Promise((resolve) => setTimeout(resolve, 3000));

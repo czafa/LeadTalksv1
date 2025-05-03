@@ -5,7 +5,8 @@
   "scripts": {
     "ngrok": "node ngrok-sync.js",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start-sync": "node ngrok-sync.js && sleep 2 && node server.js"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
