@@ -6,7 +6,7 @@
     "ngrok": "node ngrok-sync.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "start-sync": "node ngrok-sync.js && sleep 2 && node server.js"
+    "start-sync": "node -e \"(async () => { await import('./ngrok-sync.js'); setTimeout(() => import('./server.js'), 2000); })()\""
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
@@ -17,5 +17,8 @@
     "express": "^5.1.0",
     "pino": "^9.6.0",
     "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

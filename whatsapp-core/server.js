@@ -13,6 +13,8 @@ app.use(express.json());
 let socketInstancia = null;
 let ultimoQrCode = null;
 
+console.log("🔧 Iniciando server.js...");
+
 // Inicia o processo do WhatsApp ao iniciar o servidor
 (async () => {
   socketInstancia = await startLeadTalk({
