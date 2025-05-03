@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { setQrCode, getQrCode } from "./qrStore.js";
 import { startLeadTalk } from "./leadtalks.js";
 import { supabase } from "./supabase.js";
 
@@ -11,7 +12,6 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 let socketInstancia = null;
-let ultimoQrCode = null;
 
 console.log("🔧 Iniciando server.js...");
 
@@ -19,13 +19,18 @@ console.log("🔧 Iniciando server.js...");
 (async () => {
   socketInstancia = await startLeadTalk({
     onQr: (qr) => {
-      ultimoQrCode = qr; // Armazena o QR quando for gerado
+      console.log("[LeadTalk] QR code recebido.", qr);
+      setQrCode(qr);
+      console.log("[DEBUG] getQrCode retornou:", getQrCode());
     },
   });
 })();
 
 // Endpoint para retornar o último QR code diretamente da memória
 app.get("/api/qr", async (req, res) => {
+  const ultimoQrCode = getQrCode(); // ✅ Obtem da memória
+  console.log("🔍 GET /api/qr chamado. QR atual:", ultimoQrCode);
+
   if (ultimoQrCode) {
     return res.status(200).json({ qr: ultimoQrCode });
   } else {
