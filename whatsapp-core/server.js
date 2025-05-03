@@ -7,8 +7,15 @@ import { startLeadTalk } from "./leadtalks.js";
 import { supabase } from "./supabase.js";
 
 dotenv.config();
+
 const app = express();
-app.use(cors({ origin: "*" }));
+
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 let socketInstancia = null;
