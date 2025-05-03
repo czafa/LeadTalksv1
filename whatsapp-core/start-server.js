@@ -1,9 +1,11 @@
-// ngrok-sync.js
+// start-server.js
 import { createClient } from "@supabase/supabase-js";
 import { exec } from "child_process";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import util from "util";
+import { fileURLToPath } from "url";
+import path from "path";
 
 dotenv.config();
 const execAsync = util.promisify(exec);
@@ -16,31 +18,29 @@ const supabase = createClient(process.env.SUPABASE_URL, SUPABASE_KEY);
 async function iniciarNgrokEAtualizarSupabase() {
   console.log("🚀 Iniciando ngrok...");
 
-  // Roda ngrok em segundo plano, sem log poluindo o terminal
+  // Inicia o ngrok em segundo plano
   exec("ngrok http 3001 --log=stdout > /dev/null 2>&1 &");
 
-  // Aguarda ngrok estar pronto e tentar pegar a URL (tentativas por até 5 segundos)
+  // Tenta capturar a URL por até 5 segundos
   let publicUrl;
   for (let i = 0; i < 10; i++) {
     try {
-      const response = await fetch("http://127.0.0.1:4040/api/tunnels");
-      const json = await response.json();
+      const res = await fetch("http://127.0.0.1:4040/api/tunnels");
+      const json = await res.json();
       publicUrl = json.tunnels[0]?.public_url;
       if (publicUrl) break;
-    } catch (err) {
-      // aguarda meio segundo antes de tentar de novo
-      await new Promise((res) => setTimeout(res, 500));
+    } catch (e) {
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 
   if (!publicUrl) {
-    console.error("❌ Falha ao capturar URL do ngrok.");
+    console.error("❌ Não foi possível obter a URL do ngrok.");
     process.exit(1);
   }
 
   console.log("🌍 Ngrok ativo em:", publicUrl);
 
-  // Salva no Supabase
   const { error } = await supabase
     .from("configuracoes")
     .upsert(
@@ -49,11 +49,21 @@ async function iniciarNgrokEAtualizarSupabase() {
     );
 
   if (error) {
-    console.error("❌ Erro ao atualizar Supabase:", error.message);
+    console.error("❌ Falha ao atualizar Supabase:", error.message);
     process.exit(1);
   }
 
-  console.log("✅ URL salva no Supabase com sucesso.");
+  console.log("✅ URL salva no Supabase.");
 }
 
-iniciarNgrokEAtualizarSupabase();
+async function iniciarServidor() {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  console.log("🟢 Iniciando servidor WhatsApp local...");
+  exec(`node ${path.join(__dirname, "server.js")}`);
+}
+
+// Execução
+(async () => {
+  await iniciarNgrokEAtualizarSupabase();
+  await iniciarServidor();
+})();
