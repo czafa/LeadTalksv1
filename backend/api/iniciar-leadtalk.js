@@ -1,6 +1,5 @@
-// backend/api/iniciar-leadtalk.js (em Express ou Vercel API)
+// backend/api/iniciar-leadtalk.js
 import { createClient } from "@supabase/supabase-js";
-import { startLeadTalk } from "../../whatsapp-core/leadtalks.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,23 +7,40 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
 
-  if (!token) return res.status(401).json({ error: "Token não fornecido" });
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: "Token inválido" });
-
-  // ✅ Agora temos o usuario_id autenticado
-  const usuario_id = user.id;
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   try {
-    await startLeadTalk({ usuario_id });
-    res.status(200).json({ message: "Processo iniciado com sucesso" });
-  } catch (e) {
-    res.status(500).json({ error: "Erro ao iniciar LeadTalk" });
+    // 🔍 Recupera a URL atual do ngrok salva na tabela 'configuracoes'
+    const { data, error } = await supabase
+      .from("configuracoes")
+      .select("valor")
+      .eq("chave", "ngrok_url")
+      .single();
+
+    if (error || !data?.valor) {
+      throw new Error("URL do ngrok não encontrada no Supabase");
+    }
+
+    const ngrokUrl = data.valor;
+
+    const response = await fetch(ngrokUrl + "/start", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Erro no handler iniciar-leadtalk:", error);
+    return res.status(500).json({ error: "Erro interno" });
   }
 }
