@@ -1,5 +1,5 @@
-// backend/api/iniciar-leadtalk.js
 import { createClient } from "@supabase/supabase-js";
+import { applyCors } from "../lib/cors.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -7,6 +7,8 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
+  if (applyCors(res, req)) return;
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
@@ -17,7 +19,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔍 Recupera a URL atual do ngrok salva na tabela 'configuracoes'
     const { data, error } = await supabase
       .from("configuracoes")
       .select("valor")
@@ -28,9 +29,7 @@ export default async function handler(req, res) {
       throw new Error("URL do ngrok não encontrada no Supabase");
     }
 
-    const ngrokUrl = data.valor;
-
-    const response = await fetch(ngrokUrl + "/start", {
+    const response = await fetch(data.valor + "/start", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
