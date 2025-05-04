@@ -23,10 +23,11 @@ const SUPABASE_KEY =
 const supabase = createClient(process.env.SUPABASE_URL, SUPABASE_KEY);
 
 const isProd = process.env.ENV_MODE === "production";
+console.log(process.env.ENV_MODE);
+
 const DATA_DIR = "./data";
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
-let usuario_id = null;
 let sock = null;
 
 const store = makeInMemoryStore({
@@ -34,12 +35,14 @@ const store = makeInMemoryStore({
 });
 store.readFromFile(`${DATA_DIR}/store.json`);
 setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
+// 🔑 Usuário fixo (Solução B)
+const usuario_id = process.env.USUARIO_ID;
 
 export async function startLeadTalk() {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState("auth");
 
-  sock = makeWASocket({
+  const sock = makeWASocket({
     version,
     auth: state,
     printQRInTerminal: true,
@@ -49,54 +52,53 @@ export async function startLeadTalk() {
     markOnlineOnConnect: true,
   });
 
-  store.bind(sock.ev);
-  sock.ev.on("creds.update", saveCreds);
-
   sock.ev.on(
     "connection.update",
     async ({ connection, qr, lastDisconnect }) => {
-      if (qr) {
-        setQrCode(qr);
-        console.log("[LeadTalk] QR code recebido.");
-
-        const usuario_id = process.env.USUARIO_ID;
-
-        if (usuario_id) {
+      if (qr && usuario_id) {
+        try {
           await supabase.from("qr").insert([{ usuario_id, qr }]);
-          console.log("[LeadTalk] QR code salvo no Supabase.");
+          console.log("✅ QR salvo no Supabase com sucesso!");
+        } catch (err) {
+          console.error("❌ Erro ao salvar QR code:", err.message);
         }
       }
 
       if (connection === "close") {
         const shouldReconnect =
-          (lastDisconnect?.error instanceof Boom &&
-            lastDisconnect?.error?.output?.statusCode !== 401) ||
-          lastDisconnect?.reason !== DisconnectReason.loggedOut;
-
-        console.log("Conexão perdida. Reconectando?", shouldReconnect);
-        if (shouldReconnect) startLeadTalk();
+          lastDisconnect?.error instanceof Boom &&
+          lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+        console.log("🔁 Conexão encerrada. Reconectar:", shouldReconnect);
+        if (shouldReconnect) startLeadTalk(); // reutiliza mesmo usuario_id
       }
 
       if (connection === "open") {
-        console.log("[LeadTalk] ✅ Conectado ao WhatsApp!");
+        console.log("✅ Conectado ao WhatsApp");
 
-        if (usuario_id) {
-          await supabase.from("qr").delete().eq("usuario_id", usuario_id);
-          await supabase
-            .from("sessao")
-            .upsert(
-              { usuario_id, ativo: true },
-              { onConflict: ["usuario_id"] }
-            );
-          console.log("[LeadTalk] Sessão marcada como ativa no Supabase.");
+        try {
+          if (usuario_id) {
+            await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+            await supabase
+              .from("sessao")
+              .upsert(
+                { usuario_id, ativo: true },
+                { onConflict: ["usuario_id"] }
+              );
+
+            console.log("☑️ Sessão marcada como ativa no Supabase.");
+          }
+
+          await exportarContatos();
+          await exportarGruposESuasPessoas(sock);
+          await processarFilaMensagens(sock);
+        } catch (err) {
+          console.error("❌ Erro pós-conexão:", err.message);
         }
-
-        await exportarContatos();
-        await exportarGruposESuasPessoas(sock);
-        await processarFilaMensagens(sock);
       }
     }
   );
+
+  sock.ev.on("creds.update", saveCreds);
 
   return sock;
 }

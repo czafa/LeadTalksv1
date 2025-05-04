@@ -1,3 +1,4 @@
+import { iniciarLeadTalk } from "../hooks/useLeadTalks";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -30,6 +31,8 @@ export default function Login() {
       setErroMsg("❌ Sessão inválida.");
       return;
     }
+
+    await iniciarLeadTalk(); // Dispara backend para iniciar conexão com WhatsApp
 
     const API_URL =
       import.meta.env.MODE === "development"
