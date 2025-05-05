@@ -6,42 +6,50 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const { data: user } = await supabase.auth.getUser(token);
-
 export default async function handler(req, res) {
+  // Aplica CORS e trata requisições OPTIONS
   if (applyCors(res, req)) return;
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const token = req.headers.authorization?.split(" ")[1];
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.split(" ")[1]
+    : null;
+
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return res.status(401).json({ error: "Token de autenticação ausente" });
   }
 
   try {
-    const { data, error } = await supabase
+    // Recupera a URL pública do ngrok armazenada no Supabase
+    const { data: configData, error: configError } = await supabase
       .from("configuracoes")
       .select("valor")
       .eq("chave", "ngrok_url")
       .single();
 
-    if (error || !data?.valor) {
+    if (configError || !configData?.valor) {
       throw new Error("URL do ngrok não encontrada no Supabase");
     }
 
-    // Extrai o usuário logado via token
+    const ngrokUrl = configData.valor;
+
+    // Valida o token e extrai o usuário logado
     const { data: userData, error: userError } = await supabase.auth.getUser(
       token
     );
+
     if (userError || !userData?.user?.id) {
-      throw new Error("Usuário inválido.");
+      return res.status(401).json({ error: "Usuário não autorizado" });
     }
 
     const usuario_id = userData.user.id;
 
-    const response = await fetch(data.valor + "/start", {
+    // Faz a chamada para o backend local via ngrok
+    const response = await fetch(`${ngrokUrl}/start`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -50,10 +58,23 @@ export default async function handler(req, res) {
       body: JSON.stringify({ usuario_id }),
     });
 
-    const result = await response.json();
-    return res.status(200).json(result);
+    // Tenta interpretar a resposta JSON do servidor local
+    let result;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      console.error(
+        "❌ Falha ao interpretar resposta do backend local:",
+        jsonError
+      );
+      return res
+        .status(502)
+        .json({ error: "Erro ao interpretar resposta do servidor local" });
+    }
+
+    return res.status(response.status).json(result);
   } catch (error) {
-    console.error("Erro no handler iniciar-leadtalk:", error);
-    return res.status(500).json({ error: "Erro interno" });
+    console.error("❌ Erro interno no handler iniciar-leadtalk:", error);
+    return res.status(500).json({ error: "Erro interno no servidor" });
   }
 }
