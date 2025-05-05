@@ -30,7 +30,7 @@ export default function QR() {
         return;
       }
 
-      const response = await fetch("/api/sessao", {
+      const response = await fetch(import.meta.env.VITE_API_URL + "/sessao", {
         headers: {
           Authorization: `Bearer ${token}`,
         },

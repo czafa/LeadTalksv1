@@ -22,17 +22,6 @@ let socketInstancia = null;
 
 console.log("🔧 Iniciando server.js...");
 
-// Inicia o processo do WhatsApp ao iniciar o servidor
-(async () => {
-  socketInstancia = await startLeadTalk({
-    onQr: (qr) => {
-      console.log("[LeadTalk] QR code recebido.", qr);
-      setQrCode(qr);
-      console.log("[DEBUG] getQrCode retornou:", getQrCode());
-    },
-  });
-})();
-
 // Endpoint para retornar o último QR code diretamente da memória
 app.get("/api/qr", async (req, res) => {
   const ultimoQrCode = getQrCode(); // ✅ Obtem da memória
@@ -61,6 +50,44 @@ app.post("/api/enviar", async (req, res) => {
   } catch (err) {
     console.error(`[LeadTalk] ❌ Erro ao enviar mensagem:`, err.message);
     return res.status(500).json({ error: "Falha no envio" });
+  }
+});
+
+// Novo endpoint para iniciar sessão com usuário específico
+// Novo endpoint para iniciar sessão com usuário específico
+app.post("/start", async (req, res) => {
+  const { usuario_id } = req.body;
+
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+  }
+
+  try {
+    // Verifica se o usuário existe no Supabase Auth
+    const { data: usuario, error } = await supabase.auth.admin.getUserById(
+      usuario_id
+    );
+
+    if (error || !usuario) {
+      return res
+        .status(404)
+        .json({ error: "Usuário não encontrado no Supabase Auth" });
+    }
+
+    console.log(`[LeadTalk] Iniciando sessão para o usuário: ${usuario_id}`);
+
+    socketInstancia = await startLeadTalk({
+      usuario_id,
+      onQr: (qr) => {
+        console.log("[LeadTalk] QR code recebido.", qr);
+        setQrCode(qr);
+      },
+    });
+
+    res.status(200).json({ status: "Sessão iniciada com sucesso" });
+  } catch (err) {
+    console.error("Erro ao iniciar sessão:", err);
+    res.status(500).json({ error: "Falha ao iniciar sessão" });
   }
 });
 

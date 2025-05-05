@@ -35,10 +35,8 @@ const store = makeInMemoryStore({
 });
 store.readFromFile(`${DATA_DIR}/store.json`);
 setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
-// 🔑 Usuário fixo (Solução B)
-const usuario_id = process.env.USUARIO_ID;
 
-export async function startLeadTalk() {
+export async function startLeadTalk({ usuario_id, onQr }) {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState("auth");
 
@@ -62,6 +60,10 @@ export async function startLeadTalk() {
         } catch (err) {
           console.error("❌ Erro ao salvar QR code:", err.message);
         }
+
+        if (onQr) {
+          onQr(qr);
+        }
       }
 
       if (connection === "close") {
@@ -69,7 +71,7 @@ export async function startLeadTalk() {
           lastDisconnect?.error instanceof Boom &&
           lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
         console.log("🔁 Conexão encerrada. Reconectar:", shouldReconnect);
-        if (shouldReconnect) startLeadTalk(); // reutiliza mesmo usuario_id
+        if (shouldReconnect) startLeadTalk({ usuario_id, onQr });
       }
 
       if (connection === "open") {
@@ -88,9 +90,9 @@ export async function startLeadTalk() {
             console.log("☑️ Sessão marcada como ativa no Supabase.");
           }
 
-          await exportarContatos();
-          await exportarGruposESuasPessoas(sock);
-          await processarFilaMensagens(sock);
+          await exportarContatos(usuario_id);
+          await exportarGruposESuasPessoas(sock, usuario_id);
+          await processarFilaMensagens(sock, usuario_id);
         } catch (err) {
           console.error("❌ Erro pós-conexão:", err.message);
         }
@@ -103,7 +105,7 @@ export async function startLeadTalk() {
   return sock;
 }
 
-async function exportarContatos() {
+async function exportarContatos(usuario_id) {
   const contatos = Object.entries(store.contacts).map(([jid, contato]) => ({
     nome: contato.name || contato.notify || contato.pushname || jid,
     numero: jid.split("@")[0],
@@ -118,21 +120,15 @@ async function exportarContatos() {
     console.log(`[LeadTalk] ${contatos.length} contatos salvos localmente.`);
   }
 
-  const { data } = await supabase.auth.getUser();
-  const usuario_id = data?.user?.id;
   const contatosComUsuario = contatos.map((c) => ({ ...c, usuario_id }));
-
   await supabase.from("contatos").upsert(contatosComUsuario);
   console.log(`[LeadTalk] ${contatos.length} contatos enviados ao Supabase.`);
 }
 
-async function exportarGruposESuasPessoas(sock) {
+async function exportarGruposESuasPessoas(sock, usuario_id) {
   const grupos = store.chats.all().filter((chat) => chat.id.endsWith("@g.us"));
   const gruposFormatados = [];
   const membrosPorGrupo = [];
-
-  const { data } = await supabase.auth.getUser();
-  const usuario_id = data?.user?.id;
 
   for (const grupo of grupos) {
     try {
@@ -184,12 +180,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function processarFilaMensagens(sock) {
+async function processarFilaMensagens(sock, usuario_id) {
   console.log("[LeadTalk] 🔄 Buscando mensagens na fila...");
   const { data: mensagens, error } = await supabase
     .from("queue")
     .select("*")
-    .eq("enviado", false);
+    .eq("enviado", false)
+    .eq("usuario_id", usuario_id);
 
   if (error) {
     console.error("Erro ao buscar fila:", error);
