@@ -12,9 +12,7 @@ export default function QR() {
   const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
-    verificarSessao();
-
-    async function verificarSessao() {
+    const verificarSessao = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       if (!user) return navigate("/login");
@@ -30,16 +28,26 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      await carregarQr(user.id, canvasRef.current || undefined);
+      // Garante que o canvas existe antes de tentar desenhar
+      const canvas = canvasRef.current;
+      if (canvas) {
+        await carregarQr(user.id, canvas);
+      }
 
+      // Inicia o polling apenas se o canvas estiver pronto
       intervalRef.current = setInterval(() => {
-        carregarQr(user.id, canvasRef.current || undefined);
+        const canvas = canvasRef.current;
+        if (canvas) {
+          carregarQr(user.id, canvas);
+        }
       }, 5000);
 
       monitorarSessao(user.id);
-    }
+    };
 
-    function monitorarSessao(usuarioId: string) {
+    verificarSessao();
+
+    const monitorarSessao = (usuarioId: string) => {
       supabase
         .channel("sessao-status")
         .on(
@@ -57,7 +65,7 @@ export default function QR() {
           }
         )
         .subscribe();
-    }
+    };
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
