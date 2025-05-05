@@ -15,40 +15,65 @@ export default function QR() {
 
   useEffect(() => {
     const verificarSessao = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) return navigate("/login");
-
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      if (!token) return navigate("/login");
-
-      const response = await fetch(import.meta.env.VITE_API_URL + "/sessao", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const result = await response.json();
-      if (result?.ativo) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        return navigate("/home");
-      }
-
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
-        return;
-      }
-
-      await carregarQr(user.id, canvas);
-
-      intervalRef.current = setInterval(() => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-          carregarQr(user.id, canvas);
+      try {
+        // 🔐 Obtém o usuário atual
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
+        if (!user) {
+          console.warn(
+            "[QR] ❌ Usuário não autenticado. Redirecionando para login."
+          );
+          return navigate("/login");
         }
-      }, 5000);
 
-      monitorarSessao(user.id);
+        // 🔐 Obtém o token JWT da sessão
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) {
+          console.warn(
+            "[QR] ❌ Token de sessão inválido. Redirecionando para login."
+          );
+          return navigate("/login");
+        }
+
+        // 🔎 Verifica se a sessão do WhatsApp já está ativa
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (result?.ativo) {
+          console.log("[QR] ✅ Sessão já ativa. Redirecionando para /home.");
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          return navigate("/home");
+        }
+
+        // 🖼️ Aguarda o canvas estar disponível
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
+          return;
+        }
+
+        // 📲 Carrega o QR code inicialmente
+        await carregarQr(user.id, canvas);
+
+        // 🔁 Atualiza o QR code a cada 5 segundos
+        intervalRef.current = setInterval(() => {
+          const canvasAtual = canvasRef.current;
+          if (canvasAtual) {
+            carregarQr(user.id, canvasAtual);
+          } else {
+            console.warn(
+              "[QR] ⚠️ Canvas indisponível durante atualização periódica."
+            );
+          }
+        }, 5000);
+
+        // 👁️ Ativa o listener da sessão via Supabase Realtime
+        monitorarSessao(user.id);
+      } catch (err) {
+        console.error("[QR] ❌ Erro durante verificação da sessão:", err);
+      }
     };
 
     const monitorarSessao = (usuarioId: string) => {
