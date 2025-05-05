@@ -36,6 +36,19 @@ const store = makeInMemoryStore({
 store.readFromFile(`${DATA_DIR}/store.json`);
 setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
 
+async function aguardarContatos(timeout = 5000) {
+  const start = Date.now();
+  while (
+    Object.keys(store.contacts).length === 0 &&
+    Date.now() - start < timeout
+  ) {
+    console.log("[LeadTalk] ⏳ Aguardando contatos do WhatsApp...");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  return Object.keys(store.contacts).length > 0;
+}
+
 export async function startLeadTalk({ usuario_id, onQr }) {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -90,7 +103,15 @@ export async function startLeadTalk({ usuario_id, onQr }) {
             console.log("☑️ Sessão marcada como ativa no Supabase.");
           }
 
-          await exportarContatos(usuario_id);
+          const contatosCarregados = await aguardarContatos();
+          if (contatosCarregados) {
+            await exportarContatos(usuario_id);
+          } else {
+            console.warn(
+              "[LeadTalk] 🚫 Contatos não carregados. Pulando exportação."
+            );
+          }
+
           await exportarGruposESuasPessoas(sock, usuario_id);
           await processarFilaMensagens(sock, usuario_id);
         } catch (err) {
@@ -111,6 +132,12 @@ async function exportarContatos(usuario_id) {
     numero: jid.split("@")[0],
     tipo: jid.includes("@g.us") ? "grupo" : "contato",
   }));
+
+  console.log(
+    `[Debug] store.contacts carregado com ${
+      Object.keys(store.contacts).length
+    } itens`
+  );
 
   if (!isProd) {
     fs.writeFileSync(
