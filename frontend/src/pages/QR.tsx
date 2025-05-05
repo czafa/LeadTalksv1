@@ -3,10 +3,12 @@ import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
   const { carregarQr, statusMsg, loading } = useQr();
@@ -26,15 +28,19 @@ export default function QR() {
       });
 
       const result = await response.json();
-      if (result?.ativo) return navigate("/home");
-
-      // Garante que o canvas existe antes de tentar desenhar
-      const canvas = canvasRef.current;
-      if (canvas) {
-        await carregarQr(user.id, canvas);
+      if (result?.ativo) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        return navigate("/home");
       }
 
-      // Inicia o polling apenas se o canvas estiver pronto
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
+        return;
+      }
+
+      await carregarQr(user.id, canvas);
+
       intervalRef.current = setInterval(() => {
         const canvas = canvasRef.current;
         if (canvas) {
@@ -45,10 +51,8 @@ export default function QR() {
       monitorarSessao(user.id);
     };
 
-    verificarSessao();
-
     const monitorarSessao = (usuarioId: string) => {
-      supabase
+      const channel = supabase
         .channel("sessao-status")
         .on(
           "postgres_changes",
@@ -60,15 +64,21 @@ export default function QR() {
           },
           (payload) => {
             if (payload.new.ativo) {
+              if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
           }
         )
         .subscribe();
+
+      channelRef.current = channel;
     };
+
+    verificarSessao();
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
   }, [navigate, carregarQr]);
 
