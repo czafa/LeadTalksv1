@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+// QR.tsx
+import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import * as QRCode from "qrcode";
 import { useNavigate } from "react-router-dom";
+import { useQr } from "../hooks/userQr";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [statusMsg, setStatusMsg] = useState("Aguardando conexão...");
-  const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null); // ✅ controle do intervalo
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
+
+  const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
     verificarSessao();
@@ -16,74 +17,26 @@ export default function QR() {
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
-      if (!user) {
-        navigate("/login");
-        return;
-      }
+      if (!user) return navigate("/login");
 
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      console.log("🔐 Sessão atual:", session.data.session);
-
-      if (!token) {
-        navigate("/login");
-        return;
-      }
+      if (!token) return navigate("/login");
 
       const response = await fetch(import.meta.env.VITE_API_URL + "/sessao", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
+
       const result = await response.json();
+      if (result?.ativo) return navigate("/home");
 
-      if (result?.ativo) {
-        navigate("/home");
-        return;
-      }
+      await carregarQr(user.id, canvasRef.current || undefined);
 
-      await carregarQRCode();
-
-      // ✅ Agora sim: usamos o useRef corretamente
-      intervalRef.current = setInterval(carregarQRCode, 5000);
+      intervalRef.current = setInterval(() => {
+        carregarQr(user.id, canvasRef.current || undefined);
+      }, 5000);
 
       monitorarSessao(user.id);
-    }
-
-    async function carregarQRCode() {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user;
-
-        if (!user) {
-          setStatusMsg("⚠️ Usuário não autenticado.");
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("qr")
-          .select("qr")
-          .eq("usuario_id", user.id)
-          .order("created_at", { ascending: false }) // garante o mais recente
-          .limit(1)
-          .single();
-
-        if (error || !data?.qr) {
-          setLoading(false);
-          setStatusMsg("❌ QR code não encontrado.");
-          return;
-        }
-
-        if (canvasRef.current) {
-          await QRCode.toCanvas(canvasRef.current, data.qr, { width: 256 });
-          setLoading(false);
-          setStatusMsg("✅ QR carregado do Supabase.");
-        }
-      } catch (err) {
-        console.error("Erro ao carregar QR do Supabase:", err);
-        setLoading(false);
-        setStatusMsg("❌ Erro ao carregar QR Code.");
-      }
     }
 
     function monitorarSessao(usuarioId: string) {
@@ -106,13 +59,10 @@ export default function QR() {
         .subscribe();
     }
 
-    // ✅ Cancelar intervalo ao desmontar
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [navigate]);
+  }, [navigate, carregarQr]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">

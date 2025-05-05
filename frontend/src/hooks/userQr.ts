@@ -1,32 +1,43 @@
-// src/hooks/useQr.ts
-import { useEffect, useState } from "react";
+// useQr.ts
+import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import * as QRCode from "qrcode";
 
-export function useQrCode(usuario_id: string | undefined) {
-  const [qrCode, setQrCode] = useState<string | null>(null);
+export function useQr() {
+  const [statusMsg, setStatusMsg] = useState("Aguardando conexão...");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!usuario_id) return;
-
-    const fetchQr = async () => {
+  const carregarQr = async (
+    usuario_id: string,
+    canvasRef?: HTMLCanvasElement
+  ) => {
+    try {
       const { data, error } = await supabase
         .from("qr")
         .select("qr")
         .eq("usuario_id", usuario_id)
-        .order("created_at", { ascending: false })
+        .order("criado_em", { ascending: false })
         .limit(1)
         .single();
 
-      if (!error && data?.qr) {
-        setQrCode(data.qr);
+      if (error || !data?.qr) {
+        setLoading(false);
+        setStatusMsg("❌ QR code não encontrado.");
+        return;
       }
-    };
 
-    fetchQr();
+      if (canvasRef) {
+        await QRCode.toCanvas(canvasRef, data.qr, { width: 256 });
+      }
 
-    const interval = setInterval(fetchQr, 3000); // atualiza a cada 3s
-    return () => clearInterval(interval);
-  }, [usuario_id]);
+      setLoading(false);
+      setStatusMsg("✅ QR carregado do Supabase.");
+    } catch (err) {
+      console.error("Erro ao carregar QR:", err);
+      setLoading(false);
+      setStatusMsg("❌ Erro ao carregar QR Code.");
+    }
+  };
 
-  return qrCode;
+  return { carregarQr, statusMsg, loading };
 }
