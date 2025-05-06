@@ -1,4 +1,3 @@
-// src/pages/QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -10,18 +9,19 @@ export default function QR() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
-
   const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
-    // 1️⃣ Check session / active flag and start QR polling
     const verificarSessao = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return navigate("/login");
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
       if (!token) return navigate("/login");
 
       const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
@@ -29,32 +29,30 @@ export default function QR() {
       });
       const { ativo } = await res.json();
       if (ativo) {
-        clearInterval(intervalRef.current!);
+        // sessão já ativa: cancelar polling e redirecionar
+        if (intervalRef.current) clearInterval(intervalRef.current);
         return navigate("/home");
       }
 
-      // 2️⃣ Only draw when <canvas> is actually in the DOM
+      // ⏳ só inicia quando o <canvas> existe
       const canvas = canvasRef.current;
       if (!canvas) {
-        console.warn("[QR] ⚠️ Canvas not yet available, retrying next tick");
+        console.warn(
+          "[QR] ⚠️ Canvas ainda não disponível. Retentando no próximo efeito."
+        );
         return;
       }
 
-      // initial load
+      // 1️⃣ Carrega imediatamente
       await carregarQr(user.id, canvas);
 
-      // polling every 5s
+      // 2️⃣ Inicia polling
       intervalRef.current = setInterval(() => {
         const c = canvasRef.current;
         if (c) carregarQr(user.id, c);
       }, 5000);
 
-      // start realtime listener
-      monitorarSessao(user.id);
-    };
-
-    // 3️⃣ Listen for session activation to stop polling + redirect
-    const monitorarSessao = (usuarioId: string) => {
+      // 3️⃣ Liga listener realtime
       const channel = supabase
         .channel("sessao-status")
         .on(
@@ -63,11 +61,12 @@ export default function QR() {
             event: "UPDATE",
             schema: "public",
             table: "sessao",
-            filter: `usuario_id=eq.${usuarioId}`,
+            filter: `usuario_id=eq.${user.id}`,
           },
           (payload) => {
             if (payload.new.ativo) {
-              clearInterval(intervalRef.current!);
+              // pára tudo e navega
+              if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
           }
@@ -80,7 +79,7 @@ export default function QR() {
     verificarSessao();
 
     return () => {
-      // cleanup interval + realtime channel
+      // limpeza completa
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
