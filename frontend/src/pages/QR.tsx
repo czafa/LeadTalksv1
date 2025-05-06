@@ -1,4 +1,3 @@
-// src/pages/QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -13,28 +12,25 @@ export default function QR() {
   const { carregarQr, loading, statusMsg } = useQr();
 
   useEffect(() => {
-    async function verificarSessao() {
+    let isMounted = true;
+
+    const verificarSessao = async () => {
       console.log("[QR] ▶️ Verificando sessão...");
 
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
-      if (!user) {
-        console.warn("[QR] ⚠️ Não autenticado – redirecionando");
-        return navigate("/login");
-      }
+      if (!user || !isMounted) return navigate("/login");
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        console.warn("[QR] ⚠️ Token ausente – redirecionando");
-        return navigate("/login");
-      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token || !isMounted) return navigate("/login");
 
       const resp = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (!isMounted) return;
+
       if (resp.ok) {
         const { ativo } = await resp.json();
         if (ativo) {
@@ -43,25 +39,24 @@ export default function QR() {
         }
       }
 
-      // 1ª renderização do QR
+      // Renderiza QR
       const canvas = canvasRef.current;
       if (canvas) {
-        console.log("[QR] 🔄 Carregando QR inicial");
         await carregarQr(user.id, canvas);
       } else {
-        console.warn("[QR] ⚠️ Canvas indisponível no momento");
+        console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
       }
 
-      // Polling a cada 5s
-      intervalRef.current = window.setInterval(async () => {
+      // Polling
+      intervalRef.current = window.setInterval(() => {
         const c = canvasRef.current;
         if (c) {
           console.log("[QR] 🔁 Polling: recarregando QR");
-          await carregarQr(user.id, c);
+          carregarQr(user.id, c);
         }
       }, 5000);
 
-      // Realtime listener para 'sessao'
+      // WebSocket listener
       const channel = supabase
         .channel("sessao-status")
         .on(
@@ -72,30 +67,32 @@ export default function QR() {
             table: "sessao",
             filter: `usuario_id=eq.${user.id}`,
           },
-          ({ new: novo }) => {
-            console.log("[QR] 📣 Realtime payload:", novo);
-            if (novo.ativo) {
-              console.log(
-                "[QR] ✅ Sessão ativada – limpando e indo para /home"
-              );
+          (payload) => {
+            console.log("[QR] 📣 Realtime payload:", payload.new);
+            if (payload.new.ativo) {
+              console.log("[QR] ✅ Sessão ativada – indo para /home");
               if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status !== "SUBSCRIBED") {
+            console.warn("[QR] ⚠️ WebSocket falhou:", status);
+          }
+        });
 
       channelRef.current = channel;
-    }
+    };
 
     verificarSessao();
 
     return () => {
-      console.log("[QR] 🛑 Cleanup");
+      isMounted = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (channelRef.current) {
-        console.log("[QR] 🗑️ Removendo canal Realtime");
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
   }, [navigate, carregarQr]);
