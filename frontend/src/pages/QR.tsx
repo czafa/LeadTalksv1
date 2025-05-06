@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -12,24 +13,9 @@ export default function QR() {
   const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
-    const esperarCanvasEDepoisVerificar = async () => {
-      let tentativas = 0;
-      while (!canvasRef.current && tentativas < 10) {
-        await new Promise((resolve) => setTimeout(resolve, 100)); // aguarda 100ms
-        tentativas++;
-      }
+    let subscription: RealtimeChannel | null = null;
 
-      if (!canvasRef.current) {
-        console.warn(
-          "[QR] ❌ Canvas ainda não disponível após múltiplas tentativas."
-        );
-        return;
-      }
-
-      verificarSessao();
-    };
-
-    esperarCanvasEDepoisVerificar();
+    verificarSessao();
 
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
@@ -47,19 +33,17 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      await carregarQr(user.id, canvasRef.current!); // garantido que não é null
+      await carregarQr(user.id, canvasRef.current || undefined);
 
       intervalRef.current = setInterval(() => {
-        if (canvasRef.current) {
-          carregarQr(user.id, canvasRef.current);
-        }
+        carregarQr(user.id, canvasRef.current || undefined);
       }, 5000);
 
-      monitorarSessao(user.id);
+      subscription = monitorarSessao(user.id);
     }
 
     function monitorarSessao(usuarioId: string) {
-      supabase
+      return supabase
         .channel("sessao-status")
         .on(
           "postgres_changes",
@@ -80,6 +64,7 @@ export default function QR() {
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (subscription) supabase.removeChannel(subscription);
     };
   }, [navigate, carregarQr]);
 
