@@ -1,56 +1,43 @@
+// useQr.ts
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
-import QRCode from "qrcode";
+import * as QRCode from "qrcode";
 
 export function useQr() {
-  const [loading, setLoading] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState("Aguardando conexão...");
+  const [loading, setLoading] = useState(true);
 
-  async function carregarQr(usuarioId: string, canvas?: HTMLCanvasElement) {
-    if (!usuarioId) {
-      console.warn("[QR] 🚫 Usuário ID inválido. Abortando QR.");
-      setStatusMsg("❌ Usuário inválido.");
-      return;
-    }
-
-    console.log(
-      `[QR] 🔄 Iniciando carregamento do QR para usuario_id: ${usuarioId}`
-    );
-    setLoading(true);
-
+  const carregarQr = async (
+    usuario_id: string,
+    canvasRef?: HTMLCanvasElement
+  ) => {
     try {
       const { data, error } = await supabase
         .from("qr")
         .select("qr")
-        .eq("usuario_id", usuarioId)
+        .eq("usuario_id", usuario_id)
         .order("criado_em", { ascending: false })
-        .limit(1);
+        .limit(1)
+        .single();
 
-      console.log("[QR] 📦 Dados retornados do Supabase:", data);
-      const qr = data?.[0]?.qr ?? null;
-
-      if (error || !qr) {
-        console.warn("[QR] ⚠️ QR não encontrado ou erro:", error?.message);
+      if (error || !data?.qr) {
+        setLoading(false);
         setStatusMsg("❌ QR code não encontrado.");
         return;
       }
 
-      if (canvas) {
-        await QRCode.toCanvas(canvas, qr, { width: 256 });
-        console.log("[QR] 🖼️ QR code renderizado no canvas.");
+      if (canvasRef) {
+        await QRCode.toCanvas(canvasRef, data.qr, { width: 256 });
       }
 
-      setStatusMsg("✅ Escaneie o QR code acima.");
-    } catch (err: unknown) {
-      console.error(
-        "[QR] ❌ Erro ao carregar QR:",
-        err instanceof Error ? err.message : err
-      );
-      setStatusMsg("❌ Erro ao carregar QR code.");
-    } finally {
       setLoading(false);
+      setStatusMsg("✅ QR carregado do Supabase.");
+    } catch (err) {
+      console.error("Erro ao carregar QR:", err);
+      setLoading(false);
+      setStatusMsg("❌ Erro ao carregar QR Code.");
     }
-  }
+  };
 
-  return { carregarQr, loading, statusMsg };
+  return { carregarQr, statusMsg, loading };
 }

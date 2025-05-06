@@ -1,63 +1,46 @@
+// QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalRef = useRef<number | null>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
-  const { carregarQr, loading, statusMsg } = useQr();
+
+  const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
-    let isMounted = true;
+    verificarSessao();
 
-    const verificarSessao = async () => {
-      console.log("[QR] ▶️ Verificando sessão...");
-
+    async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
-      if (!user || !isMounted) return navigate("/login");
+      if (!user) return navigate("/login");
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (!token || !isMounted) return navigate("/login");
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) return navigate("/login");
 
-      const resp = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+      const response = await fetch(import.meta.env.VITE_API_URL + "/sessao", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!isMounted) return;
+      const result = await response.json();
+      if (result?.ativo) return navigate("/home");
 
-      if (resp.ok) {
-        const { ativo } = await resp.json();
-        if (ativo) {
-          console.log("[QR] 🔄 Sessão já ativa – indo para /home");
-          return navigate("/home");
-        }
-      }
+      await carregarQr(user.id, canvasRef.current || undefined);
 
-      // Renderiza QR
-      const canvas = canvasRef.current;
-      if (canvas) {
-        await carregarQr(user.id, canvas);
-      } else {
-        console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
-      }
-
-      // Polling
-      intervalRef.current = window.setInterval(() => {
-        const c = canvasRef.current;
-        if (c) {
-          console.log("[QR] 🔁 Polling: recarregando QR");
-          carregarQr(user.id, c);
-        }
+      intervalRef.current = setInterval(() => {
+        carregarQr(user.id, canvasRef.current || undefined);
       }, 5000);
 
-      // WebSocket listener
-      const channel = supabase
+      monitorarSessao(user.id);
+    }
+
+    function monitorarSessao(usuarioId: string) {
+      supabase
         .channel("sessao-status")
         .on(
           "postgres_changes",
@@ -65,35 +48,19 @@ export default function QR() {
             event: "UPDATE",
             schema: "public",
             table: "sessao",
-            filter: `usuario_id=eq.${user.id}`,
+            filter: `usuario_id=eq.${usuarioId}`,
           },
           (payload) => {
-            console.log("[QR] 📣 Realtime payload:", payload.new);
             if (payload.new.ativo) {
-              console.log("[QR] ✅ Sessão ativada – indo para /home");
-              if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
           }
         )
-        .subscribe((status) => {
-          if (status !== "SUBSCRIBED") {
-            console.warn("[QR] ⚠️ WebSocket falhou:", status);
-          }
-        });
-
-      channelRef.current = channel;
-    };
-
-    verificarSessao();
+        .subscribe();
+    }
 
     return () => {
-      isMounted = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
     };
   }, [navigate, carregarQr]);
 
@@ -104,7 +71,7 @@ export default function QR() {
 
       {loading ? (
         <div className="flex justify-center mb-4">
-          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin" />
+          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin"></div>
         </div>
       ) : (
         <canvas ref={canvasRef} className="mx-auto mb-4" />
