@@ -1,3 +1,4 @@
+// src/pages/QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -6,53 +7,61 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<number | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
-  const { carregarQr, statusMsg, loading } = useQr();
+  const { carregarQr, loading, statusMsg } = useQr();
 
   useEffect(() => {
-    const verificarSessao = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return navigate("/login");
+    async function verificarSessao() {
+      console.log("[QR] ▶️ Verificando sessão...");
+
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user) {
+        console.warn("[QR] ⚠️ Não autenticado – redirecionando");
+        return navigate("/login");
+      }
 
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) return navigate("/login");
+      if (!token) {
+        console.warn("[QR] ⚠️ Token ausente – redirecionando");
+        return navigate("/login");
+      }
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const { ativo } = await res.json();
-      if (ativo) {
-        // sessão já ativa: cancelar polling e redirecionar
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        return navigate("/home");
+      if (resp.ok) {
+        const { ativo } = await resp.json();
+        if (ativo) {
+          console.log("[QR] 🔄 Sessão já ativa – indo para /home");
+          return navigate("/home");
+        }
       }
 
-      // ⏳ só inicia quando o <canvas> existe
+      // 1ª renderização do QR
       const canvas = canvasRef.current;
-      if (!canvas) {
-        console.warn(
-          "[QR] ⚠️ Canvas ainda não disponível. Retentando no próximo efeito."
-        );
-        return;
+      if (canvas) {
+        console.log("[QR] 🔄 Carregando QR inicial");
+        await carregarQr(user.id, canvas);
+      } else {
+        console.warn("[QR] ⚠️ Canvas indisponível no momento");
       }
 
-      // 1️⃣ Carrega imediatamente
-      await carregarQr(user.id, canvas);
-
-      // 2️⃣ Inicia polling
-      intervalRef.current = setInterval(() => {
+      // Polling a cada 5s
+      intervalRef.current = window.setInterval(async () => {
         const c = canvasRef.current;
-        if (c) carregarQr(user.id, c);
+        if (c) {
+          console.log("[QR] 🔁 Polling: recarregando QR");
+          await carregarQr(user.id, c);
+        }
       }, 5000);
 
-      // 3️⃣ Liga listener realtime
+      // Realtime listener para 'sessao'
       const channel = supabase
         .channel("sessao-status")
         .on(
@@ -63,9 +72,12 @@ export default function QR() {
             table: "sessao",
             filter: `usuario_id=eq.${user.id}`,
           },
-          (payload) => {
-            if (payload.new.ativo) {
-              // pára tudo e navega
+          ({ new: novo }) => {
+            console.log("[QR] 📣 Realtime payload:", novo);
+            if (novo.ativo) {
+              console.log(
+                "[QR] ✅ Sessão ativada – limpando e indo para /home"
+              );
               if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
@@ -74,14 +86,17 @@ export default function QR() {
         .subscribe();
 
       channelRef.current = channel;
-    };
+    }
 
     verificarSessao();
 
     return () => {
-      // limpeza completa
+      console.log("[QR] 🛑 Cleanup");
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
+      if (channelRef.current) {
+        console.log("[QR] 🗑️ Removendo canal Realtime");
+        supabase.removeChannel(channelRef.current);
+      }
     };
   }, [navigate, carregarQr]);
 
@@ -92,7 +107,7 @@ export default function QR() {
 
       {loading ? (
         <div className="flex justify-center mb-4">
-          <div className="loader rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin" />
+          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin" />
         </div>
       ) : (
         <canvas ref={canvasRef} className="mx-auto mb-4" />
