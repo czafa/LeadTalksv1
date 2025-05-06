@@ -105,7 +105,7 @@ export async function startLeadTalk({ usuario_id, onQr }) {
 
           const contatosCarregados = await aguardarContatos();
           if (contatosCarregados) {
-            await exportarContatos(usuario_id);
+            await exportarContatos(sock, usuario_id);
           } else {
             console.warn(
               "[LeadTalk] 🚫 Contatos não carregados. Pulando exportação."
@@ -126,12 +126,20 @@ export async function startLeadTalk({ usuario_id, onQr }) {
   return sock;
 }
 
-async function exportarContatos(usuario_id) {
-  const contatos = Object.entries(store.contacts).map(([jid, contato]) => ({
-    nome: contato.name || contato.notify || contato.pushname || jid,
-    numero: jid.split("@")[0],
-    tipo: jid.includes("@g.us") ? "grupo" : "contato",
-  }));
+async function exportarContatos(sock, usuario_id) {
+  const contatos = Object.entries(sock.store.contacts).map(
+    ([jid, contato]) => ({
+      nome: contato.name || contato.notify || contato.pushname || jid,
+      numero: jid.split("@")[0],
+      tipo: jid.includes("@g.us") ? "grupo" : "contato",
+    })
+  );
+
+  console.log(
+    "Total de contatos disponíveis:",
+    Object.keys(sock.store.contacts).length
+  );
+  console.log("Exemplo de contato:", Object.values(sock.store.contacts)[0]);
 
   console.log(
     `[Debug] store.contacts carregado com ${
