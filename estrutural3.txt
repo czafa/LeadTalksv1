@@ -1,25 +1,25 @@
 .
 ├── README.md
-├── backend  (VERCEL)
+├── backend
 │   ├── api
-│   │   ├── contatos.js (PEGA NO SUPABASE)
-│   │   ├── enviar.js (FAZ SOLICITAÇÂO PARA O SERVIDOR LOCAL)
-│   │   ├── grupos.js (PEGA NO SUPABASE)
-│   │   ├── membros-grupos.js (PEGA NO SUPABASE)
-│   │   ├── qr.js (SERVIDOR LOCAL ENVIA PARA SUPABASE - SUPABASE ENVIA PARA FRONT)
-│   │   ├── sessao.js (SUPABASE)
-│   │   ├── start-session.js
-│   │   └── startSender.js
+│   │   ├── contatos.js
+│   │   ├── enviar.js
+│   │   ├── grupos.js
+│   │   ├── iniciar-leadtalk.js
+│   │   ├── membros-grupos.js
+│   │   ├── qr.js
+│   │   └── sessao.js
 │   ├── index.js
 │   ├── lib
+│   │   ├── cors.js
 │   │   └── supabase.js
 │   ├── node_modules
-│   │
+
 │   ├── package-lock.json
 │   ├── package.json
 │   └── vercel.json
 ├── estrutural3.txt
-├── frontend (VERCEL)
+├── frontend
 │   ├── README.md
 │   ├── eslint.config.js
 │   ├── index.css
@@ -36,6 +36,7 @@
 │   │   ├── App.tsx
 │   │   ├── assets
 │   │   ├── components
+│   │   ├── hooks
 │   │   ├── index.css
 │   │   ├── lib
 │   │   ├── main.tsx
@@ -48,22 +49,25 @@
 │   ├── tsconfig.node.json
 │   ├── vercel.json
 │   └── vite.config.ts
-└── whatsapp-core (RODAR LOCAL)
+└── whatsapp-core
     ├── README.md
-    ├── README.md:Zone.Identifier
     ├── api
     │   ├── enviar.js
     │   └── start-session.js
-    ├── auth (ENVIA SUPABASE)
-    ├── auth.js
-    ├── data (ENVIA SUPABASE)
-    ├── ecosystem.config.cjs
+    ├── auth
+
+    ├── data
+    │   └── store.json
     ├── leadtalks.js
+    ├── ngrok-sync.js
     ├── node_modules
+
     ├── package-lock.json
     ├── package.json
-    ├── sender.js
+    ├── qrStore.js
+    ├── server.js
+    ├── start-server.js
     ├── supabase.js
-    └── temp (QR CODE)
+    └── temp
 
-484 directories, 49 files
+547 directories, 174 files
