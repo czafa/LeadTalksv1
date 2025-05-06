@@ -1,4 +1,4 @@
-import { iniciarLeadTalk } from "../hooks/useLeadTalks";
+import { useLeadTalks } from "../hooks/useLeadTalks";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -8,6 +8,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [erroMsg, setErroMsg] = useState("");
   const navigate = useNavigate();
+
+  const { iniciarSessao, loading, erro } = useLeadTalks();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,9 +24,11 @@ export default function Login() {
       setErroMsg("❌ Email ou senha inválidos.");
       return;
     }
+
     const token =
       data.session?.access_token ||
       (await supabase.auth.getSession()).data.session?.access_token;
+
     console.log("🔐 Sessão atual:", data.session);
 
     if (!token) {
@@ -32,13 +36,15 @@ export default function Login() {
       return;
     }
 
-    await iniciarLeadTalk(); // Dispara backend para iniciar conexão com WhatsApp
+    await iniciarSessao(); // Dispara backend para iniciar conexão com WhatsApp
 
     const API_URL =
       import.meta.env.MODE === "development"
         ? import.meta.env.VITE_API_LOCAL
         : import.meta.env.VITE_API_URL;
+
     console.log("URL da API sendo usada:", API_URL);
+
     try {
       const response = await fetch(`${API_URL}/sessao`, {
         headers: {
@@ -54,6 +60,7 @@ export default function Login() {
         navigate("/qr");
       }
     } catch (err) {
+      console.error("Erro ao validar sessão:", err);
       setErroMsg("❌ Falha ao validar sessão.");
     }
   };
@@ -96,6 +103,20 @@ export default function Login() {
         >
           Entrar
         </button>
+
+        {loading && (
+          <p className="text-blue-600 text-sm mt-4 text-center animate-pulse">
+            ⏳ Iniciando sessão no WhatsApp...
+          </p>
+        )}
+
+        {erro && (
+          <p className="text-red-500 text-sm mt-2 text-center">❌ {erro}</p>
+        )}
+
+        {erroMsg && (
+          <p className="text-red-500 text-sm mt-4 text-center">{erroMsg}</p>
+        )}
       </form>
 
       <div className="text-sm text-center mt-4">
@@ -107,10 +128,6 @@ export default function Login() {
           Esqueci a senha
         </a>
       </div>
-
-      {erroMsg && (
-        <p className="text-red-500 text-sm mt-4 text-center">{erroMsg}</p>
-      )}
     </div>
   );
 }
