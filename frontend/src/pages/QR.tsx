@@ -1,20 +1,35 @@
-// src/pages/QR.tsx
+// QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
-import { useQr } from "../hooks/userQr";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useQr } from "../hooks/useQr";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
   const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
-    verificarSessao();
+    const esperarCanvasEDepoisVerificar = async () => {
+      let tentativas = 0;
+      while (!canvasRef.current && tentativas < 10) {
+        await new Promise((resolve) => setTimeout(resolve, 100)); // aguarda 100ms
+        tentativas++;
+      }
+
+      if (!canvasRef.current) {
+        console.warn(
+          "[QR] ❌ Canvas ainda não disponível após múltiplas tentativas."
+        );
+        return;
+      }
+
+      verificarSessao();
+    };
+
+    esperarCanvasEDepoisVerificar();
 
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
@@ -32,19 +47,11 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      // Só renderiza se o canvas estiver disponível
-      const canvas = canvasRef.current;
-      if (canvas) {
-        await carregarQr(user.id, canvas);
-      } else {
-        console.warn("[QR] ⚠️ Canvas ainda não disponível no momento.");
-      }
+      await carregarQr(user.id, canvasRef.current!); // garantido que não é null
 
       intervalRef.current = setInterval(() => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-          console.log("[QR] 🔁 Polling: recarregando QR");
-          carregarQr(user.id, canvas);
+        if (canvasRef.current) {
+          carregarQr(user.id, canvasRef.current);
         }
       }, 5000);
 
@@ -52,7 +59,7 @@ export default function QR() {
     }
 
     function monitorarSessao(usuarioId: string) {
-      const channel = supabase
+      supabase
         .channel("sessao-status")
         .on(
           "postgres_changes",
@@ -64,27 +71,15 @@ export default function QR() {
           },
           (payload) => {
             if (payload.new.ativo) {
-              console.log(
-                "[QR] ✅ Sessão ativada via Realtime – redirecionando"
-              );
               navigate("/home");
             }
           }
         )
         .subscribe();
-
-      channelRef.current = channel;
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [navigate, carregarQr]);
 
