@@ -1,4 +1,4 @@
-// QR.tsx
+// src/pages/QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -14,68 +14,46 @@ export default function QR() {
   const { carregarQr, statusMsg, loading } = useQr();
 
   useEffect(() => {
+    // 1️⃣ Check session / active flag and start QR polling
     const verificarSessao = async () => {
-      try {
-        // 🔐 Obtém o usuário atual
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user;
-        if (!user) {
-          console.warn(
-            "[QR] ❌ Usuário não autenticado. Redirecionando para login."
-          );
-          return navigate("/login");
-        }
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user) return navigate("/login");
 
-        // 🔐 Obtém o token JWT da sessão
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData?.session?.access_token;
-        if (!token) {
-          console.warn(
-            "[QR] ❌ Token de sessão inválido. Redirecionando para login."
-          );
-          return navigate("/login");
-        }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return navigate("/login");
 
-        // 🔎 Verifica se a sessão do WhatsApp já está ativa
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await response.json();
-        if (result?.ativo) {
-          console.log("[QR] ✅ Sessão já ativa. Redirecionando para /home.");
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          return navigate("/home");
-        }
-
-        // 🖼️ Aguarda o canvas estar disponível
-        const canvas = canvasRef.current;
-        if (!canvas) {
-          console.warn("[QR] ⚠️ Canvas ainda não está disponível.");
-          return;
-        }
-
-        // 📲 Carrega o QR code inicialmente
-        await carregarQr(user.id, canvas);
-
-        // 🔁 Atualiza o QR code a cada 5 segundos
-        intervalRef.current = setInterval(() => {
-          const canvasAtual = canvasRef.current;
-          if (canvasAtual) {
-            carregarQr(user.id, canvasAtual);
-          } else {
-            console.warn(
-              "[QR] ⚠️ Canvas indisponível durante atualização periódica."
-            );
-          }
-        }, 5000);
-
-        // 👁️ Ativa o listener da sessão via Supabase Realtime
-        monitorarSessao(user.id);
-      } catch (err) {
-        console.error("[QR] ❌ Erro durante verificação da sessão:", err);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const { ativo } = await res.json();
+      if (ativo) {
+        clearInterval(intervalRef.current!);
+        return navigate("/home");
       }
+
+      // 2️⃣ Only draw when <canvas> is actually in the DOM
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        console.warn("[QR] ⚠️ Canvas not yet available, retrying next tick");
+        return;
+      }
+
+      // initial load
+      await carregarQr(user.id, canvas);
+
+      // polling every 5s
+      intervalRef.current = setInterval(() => {
+        const c = canvasRef.current;
+        if (c) carregarQr(user.id, c);
+      }, 5000);
+
+      // start realtime listener
+      monitorarSessao(user.id);
     };
 
+    // 3️⃣ Listen for session activation to stop polling + redirect
     const monitorarSessao = (usuarioId: string) => {
       const channel = supabase
         .channel("sessao-status")
@@ -89,7 +67,7 @@ export default function QR() {
           },
           (payload) => {
             if (payload.new.ativo) {
-              if (intervalRef.current) clearInterval(intervalRef.current);
+              clearInterval(intervalRef.current!);
               navigate("/home");
             }
           }
@@ -102,6 +80,7 @@ export default function QR() {
     verificarSessao();
 
     return () => {
+      // cleanup interval + realtime channel
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
@@ -114,7 +93,7 @@ export default function QR() {
 
       {loading ? (
         <div className="flex justify-center mb-4">
-          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin"></div>
+          <div className="loader rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin" />
         </div>
       ) : (
         <canvas ref={canvasRef} className="mx-auto mb-4" />
