@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
-import { useQr } from "../hooks/useQr";
+import { useQr } from "../hooks/userQr";
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
