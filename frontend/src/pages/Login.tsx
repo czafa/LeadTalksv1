@@ -9,7 +9,8 @@ export default function Login() {
   const [erroMsg, setErroMsg] = useState("");
   const navigate = useNavigate();
 
-  const { iniciarSessao, loading, erro } = useLeadTalks();
+  const { contatos, grupos, membrosPorGrupo, loading, error } =
+    useLeadTalks(usuario_id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
