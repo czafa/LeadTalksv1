@@ -1,54 +1,68 @@
-import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { useEffect, useState } from "react";
 
-export function useLeadTalks() {
-  const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
+interface Contato {
+  id?: string;
+  nome: string;
+  numero: string;
+}
 
-  const iniciarSessao = async () => {
-    setErro(null);
+interface Grupo {
+  grupo_jid: string;
+  nome: string;
+  tamanho: number;
+}
+
+interface MembroGrupo {
+  nome: string;
+  numero: string;
+}
+
+export function useLeadTalks(usuario_id: string) {
+  const [contatos, setContatos] = useState<Contato[]>([]);
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [membrosPorGrupo, setMembrosPorGrupo] = useState<
+    Record<string, MembroGrupo[]>
+  >({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!usuario_id) return;
+
     setLoading(true);
+    setError(null);
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    const token = session?.access_token;
-
-    if (sessionError || !token) {
-      setErro("Usuário não autenticado.");
-      setLoading(false);
-      return { sucesso: false };
-    }
-
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/iniciar-leadtalk`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+    Promise.all([
+      fetch(`/api/contatos?usuario_id=${usuario_id}`).then((r) => {
+        if (!r.ok) throw new Error("Erro ao buscar contatos");
+        return r.json();
+      }),
+      fetch(`/api/grupos?usuario_id=${usuario_id}`).then((r) => {
+        if (!r.ok) throw new Error("Erro ao buscar grupos");
+        return r.json();
+      }),
+      fetch(`/api/membros-grupos?usuario_id=${usuario_id}`).then((r) => {
+        if (!r.ok) throw new Error("Erro ao buscar membros dos grupos");
+        return r.json();
+      }),
+    ])
+      .then(([contatos, grupos, membrosData]) => {
+        console.log("📦 membrosData:", membrosData);
+        setContatos(contatos);
+        setGrupos(grupos);
+        if (membrosData && typeof membrosData.grupos === "object") {
+          setMembrosPorGrupo(membrosData.grupos);
+        } else {
+          console.warn("⚠️ Estrutura inválida em membrosData:", membrosData);
+          setMembrosPorGrupo({});
         }
-      );
+      })
+      .catch((err) => {
+        console.error("Erro em useLeadTalks:", err);
+        setError(err.message || "Erro desconhecido");
+      })
+      .finally(() => setLoading(false));
+  }, [usuario_id]);
 
-      const json = await res.json();
-
-      if (!res.ok) {
-        setErro(json.error || "Erro desconhecido");
-        return { sucesso: false };
-      }
-
-      return { sucesso: true };
-    } catch (err: unknown) {
-      console.error("Erro ao iniciar sessão:", err);
-      setErro("Erro de rede ou servidor");
-      return { sucesso: false };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { iniciarSessao, loading, erro };
+  return { contatos, grupos, membrosPorGrupo, loading, error };
 }
