@@ -1,24 +1,22 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
-
 import { createBrowserClient } from "@supabase/ssr";
 import { SessionContextProvider } from "@supabase/auth-helpers-react";
 
-// Cria o cliente Supabase com variáveis de ambiente
 const supabase = createBrowserClient(
   import.meta.env.VITE_SUPABASE_URL!,
   import.meta.env.VITE_SUPABASE_ANON_KEY!
 );
 
-// Opcional: exporta para debug no console
-(window as any).supabase = supabase;
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
     <SessionContextProvider supabaseClient={supabase}>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </SessionContextProvider>
-  </React.StrictMode>
+  </StrictMode>
 );

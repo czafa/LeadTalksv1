@@ -1,14 +1,26 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+const BACKEND_URL = import.meta.env.VITE_API_URL;
+
 type Contato = {
   id: string;
   nome: string;
   numero: string;
 };
 
+type Grupo = {
+  grupo_jid: string;
+  nome: string;
+  tamanho: number;
+};
+
+type MembrosPorGrupo = Record<string, { nome: string; numero: string }[]>;
+
 export default function Home() {
   const [contatos, setContatos] = useState<Contato[]>([]);
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [membrosPorGrupo, setMembrosPorGrupo] = useState<MembrosPorGrupo>({});
   const [mensagem, setMensagem] = useState("");
   const [intervalo, setIntervalo] = useState(10);
   const [logEnvio, setLogEnvio] = useState<string[]>([]);
@@ -17,25 +29,36 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const fetchContatos = async () => {
+    const fetchDados = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
 
       if (!userId) return;
 
-      const { data, error } = await supabase
-        .from("contatos")
-        .select("id, nome, numero")
-        .eq("usuario_id", userId);
+      const [contatoRes, grupoRes, membrosRes] = await Promise.all([
+        supabase
+          .from("contatos")
+          .select("id, nome, numero")
+          .eq("usuario_id", userId),
+        fetch(`${BACKEND_URL}/api/grupos?usuario_id=${userId}`).then((res) =>
+          res.json()
+        ),
+        fetch(`${BACKEND_URL}/api/membros-grupos?usuario_id=${userId}`).then(
+          (res) => res.json()
+        ),
+      ]);
 
-      if (error) {
-        console.error("Erro ao carregar contatos:", error);
+      if (contatoRes.error) {
+        console.error("Erro ao carregar contatos:", contatoRes.error);
       } else {
-        setContatos(data || []);
+        setContatos(contatoRes.data || []);
       }
+
+      setGrupos(grupoRes);
+      setMembrosPorGrupo(membrosRes.grupos || {});
     };
 
-    fetchContatos();
+    fetchDados();
   }, []);
 
   const obterNome = (numero: string) => {
@@ -55,7 +78,7 @@ export default function Home() {
       const msgPersonalizada = mensagem.replace("{{nome}}", nome);
 
       try {
-        const res = await fetch("/api/enviar", {
+        const res = await fetch(`${BACKEND_URL}/api/enviar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ numero, mensagem: msgPersonalizada }),
@@ -63,9 +86,9 @@ export default function Home() {
 
         if (!res.ok) throw new Error("Erro ao enviar");
 
-        console.log(`✅ Mensagem enviada para ${numero}`);
+        setLogEnvio((prev) => [...prev, `✅ ${numero}`]);
       } catch (err) {
-        console.error(`❌ Falha ao enviar para ${numero}:`, err);
+        setLogEnvio((prev) => [...prev, `❌ ${numero}: ${err}`]);
       }
 
       await new Promise((r) => setTimeout(r, intervalo * 1000));
@@ -74,7 +97,6 @@ export default function Home() {
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
-      {/* Barra superior */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end mb-4">
         <input
           type="text"
@@ -104,14 +126,12 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Botão de log */}
       <div className="text-center mb-4">
         <button className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">
           📄 Ver Log
         </button>
       </div>
 
-      {/* Log */}
       <pre className="bg-white text-gray-800 p-4 rounded shadow max-h-64 overflow-y-auto whitespace-pre-wrap">
         {logEnvio.join("\n")}
       </pre>
@@ -122,9 +142,7 @@ export default function Home() {
         🧹 Limpar Log
       </button>
 
-      {/* Contatos e Grupos lado a lado */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        {/* Contatos */}
         <div className="bg-white shadow rounded p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Contatos</h2>
           <ul className="space-y-2">
@@ -154,11 +172,23 @@ export default function Home() {
           </ul>
         </div>
 
-        {/* Grupos */}
         <div className="bg-white shadow rounded p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Grupos</h2>
-          <ul className="space-y-2 bg-gray-100 p-2 rounded">
-            <li className="text-gray-400 italic">Ainda não implementado</li>
+          <ul className="space-y-4">
+            {grupos.map((grupo) => (
+              <li key={grupo.grupo_jid} className="border rounded p-2">
+                <div className="font-bold">
+                  {grupo.nome} ({grupo.tamanho} membros)
+                </div>
+                <ul className="ml-4 mt-1 list-disc text-sm">
+                  {(membrosPorGrupo[grupo.grupo_jid] || []).map((membro, i) => (
+                    <li key={i}>
+                      {membro.nome} ({membro.numero})
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
