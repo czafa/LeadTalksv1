@@ -42,10 +42,10 @@ export default function Home() {
           .from("contatos")
           .select("id, nome, numero")
           .eq("usuario_id", userId),
-        fetch(`${BACKEND_URL}/api/grupos?usuario_id=${userId}`, {
+        fetch(`${BACKEND_URL}/grupos?usuario_id=${userId}`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((res) => res.json()),
-        fetch(`${BACKEND_URL}/api/membros-grupos?usuario_id=${userId}`, {
+        fetch(`${BACKEND_URL}/membros-grupos?usuario_id=${userId}`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((res) => res.json()),
       ]);
@@ -83,7 +83,7 @@ export default function Home() {
       const msgPersonalizada = mensagem.replace("{{nome}}", nome);
 
       try {
-        const res = await fetch(`${BACKEND_URL}/api/enviar`, {
+        const res = await fetch(`${BACKEND_URL}/enviar`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
