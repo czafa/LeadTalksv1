@@ -30,13 +30,34 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const fetchDados = async () => {
+    const fetchDadosProtegidos = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       const userId = userData.user?.id;
 
-      if (!userId || !token) return;
+      if (!userId || !token) {
+        console.warn("Usuário ou token não disponível.");
+        return;
+      }
+
+      // Verifica se o WhatsApp está conectado (sessão ativa)
+      const sessaoResp = await fetch(`${BACKEND_URL}/sessao`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ usuario_id: userId }),
+      });
+
+      if (!sessaoResp.ok) {
+        console.warn(
+          "Sessão do WhatsApp não encontrada. Redirecionando para /qr."
+        );
+        window.location.href = "/qr"; // ou navigate("/qr") se estiver usando react-router
+        return;
+      }
 
       console.log(
         "Enviando para:",
@@ -70,7 +91,7 @@ export default function Home() {
       setMembrosPorGrupo(membrosRes.grupos || {});
     };
 
-    fetchDados();
+    fetchDadosProtegidos();
   }, []);
 
   const obterNome = (numero: string) => {
@@ -102,7 +123,10 @@ export default function Home() {
           body: JSON.stringify({ numero, mensagem: msgPersonalizada }),
         });
 
-        if (!res.ok) throw new Error("Erro ao enviar");
+        if (!res.ok) {
+          const erro = await res.json();
+          throw new Error(erro.error || "Erro ao enviar");
+        }
 
         setLogEnvio((prev) => [...prev, `✅ ${numero}`]);
       } catch (err) {
@@ -113,12 +137,16 @@ export default function Home() {
     }
   };
 
+  const [filtroNome, setFiltroNome] = useState("");
+
   return (
     <div className="p-4 max-w-6xl mx-auto">
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end mb-4">
         <input
           type="text"
           placeholder="🔍 Pesquise um contato"
+          value={filtroNome}
+          onChange={(e) => setFiltroNome(e.target.value.toLowerCase())}
           className="border border-gray-300 rounded p-2 w-full"
         />
         <textarea
@@ -164,29 +192,33 @@ export default function Home() {
         <div className="bg-white shadow rounded p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Contatos</h2>
           <ul className="space-y-2">
-            {contatos.map((contato) => (
-              <li
-                key={contato.id}
-                className="flex items-center justify-between border p-2 rounded"
-              >
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    value={contato.numero}
-                    checked={contatosSelecionados.includes(contato.numero)}
-                    onChange={(e) => {
-                      const numero = e.target.value;
-                      setContatosSelecionados((prev) =>
-                        e.target.checked
-                          ? [...prev, numero]
-                          : prev.filter((n) => n !== numero)
-                      );
-                    }}
-                  />
-                  {contato.nome} ({contato.numero})
-                </label>
-              </li>
-            ))}
+            {contatos
+              .filter((contato) =>
+                contato.nome.toLowerCase().includes(filtroNome)
+              )
+              .map((contato) => (
+                <li
+                  key={contato.id}
+                  className="flex items-center justify-between border p-2 rounded"
+                >
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      value={contato.numero}
+                      checked={contatosSelecionados.includes(contato.numero)}
+                      onChange={(e) => {
+                        const numero = e.target.value;
+                        setContatosSelecionados((prev) =>
+                          e.target.checked
+                            ? [...prev, numero]
+                            : prev.filter((n) => n !== numero)
+                        );
+                      }}
+                    />
+                    {contato.nome} ({contato.numero})
+                  </label>
+                </li>
+              ))}
           </ul>
         </div>
 
