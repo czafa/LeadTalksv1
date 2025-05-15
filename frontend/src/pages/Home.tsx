@@ -38,6 +38,15 @@ export default function Home() {
 
       if (!userId || !token) return;
 
+      console.log(
+        "Enviando para:",
+        `${BACKEND_URL}/grupos?usuario_id=${userId}`
+      );
+      console.log(
+        "Enviando para:",
+        `${BACKEND_URL}/membros-grupos?usuario_id=${userId}`
+      );
+
       const [contatoRes, grupoRes, membrosRes] = await Promise.all([
         supabase
           .from("contatos")
