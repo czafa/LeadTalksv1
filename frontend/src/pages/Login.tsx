@@ -38,7 +38,7 @@ export default function Login() {
 
     const BACKEND_URL = import.meta.env.VITE_API_URL;
 
-    await fetch(`${BACKEND_URL}/api/sessao`, {
+    await fetch(`${BACKEND_URL}/sessao`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
