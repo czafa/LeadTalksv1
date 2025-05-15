@@ -29,11 +29,22 @@ export default function Login() {
       return;
     }
 
-    await fetch("/api/sessao", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario_id }),
-    });
+    const token = data.session?.access_token;
+    if (token) {
+      const res = await fetch("/api/sessao", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ usuario_id }),
+      });
+
+      if (!res.ok) {
+        setErroMsg("Erro ao iniciar sessão.");
+        return;
+      }
+    }
 
     navigate("/qr");
   };
