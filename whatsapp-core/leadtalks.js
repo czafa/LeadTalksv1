@@ -13,6 +13,8 @@ import {
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAuthState } from "./lib/supabaseAuth.ts"; // ajuste o caminho se necessário
+
 import { setQrCode } from "./qrStore.js";
 
 // Corrige __dirname em ES modules
@@ -89,9 +91,7 @@ async function aguardarContatos(timeout = 20000) {
 
 export async function startLeadTalk({ usuario_id, onQr }) {
   const { version } = await fetchLatestBaileysVersion();
-  const { state, saveCreds } = await useMultiFileAuthState(
-    `auth/${usuario_id}`
-  );
+  const { state, saveCreds } = await supabaseAuthState(usuario_id);
 
   const sock = makeWASocket({
     version,

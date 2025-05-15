@@ -30,19 +30,15 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const fetchDadosProtegidos = async () => {
+    const fetchDados = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       const userId = userData.user?.id;
 
-      if (!userId || !token) {
-        console.warn("Usuário ou token não disponível.");
-        return;
-      }
+      if (!userId || !token) return;
 
-      // Verifica se o WhatsApp está conectado (sessão ativa)
-      const sessaoResp = await fetch(`${BACKEND_URL}/sessao`, {
+      const sessaoRes = await fetch(`${BACKEND_URL}/sessao`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -51,28 +47,16 @@ export default function Home() {
         body: JSON.stringify({ usuario_id: userId }),
       });
 
-      if (!sessaoResp.ok) {
-        console.warn(
-          "Sessão do WhatsApp não encontrada. Redirecionando para /qr."
-        );
-        window.location.href = "/qr"; // ou navigate("/qr") se estiver usando react-router
+      const sessao = await sessaoRes.json();
+      if (!sessao.ativo) {
+        console.warn("Sessão WhatsApp não está ativa");
         return;
       }
 
-      console.log(
-        "Enviando para:",
-        `${BACKEND_URL}/grupos?usuario_id=${userId}`
-      );
-      console.log(
-        "Enviando para:",
-        `${BACKEND_URL}/membros-grupos?usuario_id=${userId}`
-      );
-
       const [contatoRes, grupoRes, membrosRes] = await Promise.all([
-        supabase
-          .from("contatos")
-          .select("id, nome, numero")
-          .eq("usuario_id", userId),
+        fetch(`${BACKEND_URL}/contatos?usuario_id=${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((res) => res.json()),
         fetch(`${BACKEND_URL}/grupos?usuario_id=${userId}`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((res) => res.json()),
@@ -84,14 +68,14 @@ export default function Home() {
       if (contatoRes.error) {
         console.error("Erro ao carregar contatos:", contatoRes.error);
       } else {
-        setContatos(contatoRes.data || []);
+        setContatos(contatoRes.contatos || []);
       }
 
       setGrupos(grupoRes);
       setMembrosPorGrupo(membrosRes.grupos || {});
     };
 
-    fetchDadosProtegidos();
+    fetchDados();
   }, []);
 
   const obterNome = (numero: string) => {
