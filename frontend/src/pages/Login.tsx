@@ -29,22 +29,23 @@ export default function Login() {
       return;
     }
 
-    const token = data.session?.access_token;
-    if (token) {
-      const res = await fetch("/api/sessao", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ usuario_id }),
-      });
-
-      if (!res.ok) {
-        setErroMsg("Erro ao iniciar sessão.");
-        return;
-      }
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+    if (!token) {
+      setErroMsg("Token de sessão não encontrado");
+      return;
     }
+
+    const BACKEND_URL = import.meta.env.VITE_API_URL;
+
+    await fetch(`${BACKEND_URL}/api/sessao`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ usuario_id }),
+    });
 
     navigate("/qr");
   };
