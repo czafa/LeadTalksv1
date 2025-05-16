@@ -10,7 +10,7 @@ export default function QR() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, statusMsg, loading } = useQr();
+  const { carregarQr, loading, statusMsg } = useQr();
 
   useEffect(() => {
     let subscription: RealtimeChannel | null = null;
