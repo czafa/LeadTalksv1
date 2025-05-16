@@ -1,22 +1,22 @@
-import { supabase } from "..supabase.js"; // ajuste o caminho se necessário
+import { supabase } from "../supabase.js";
 
 export async function supabaseAuthState(usuario_id) {
-  let creds = {};
+  let creds;
 
-  // tenta carregar a sessão armazenada no Supabase
+  // tentar carregar a sessão do Supabase
   const { data, error } = await supabase
     .from("sessao_baileys")
     .select("dados")
     .eq("usuario_id", usuario_id)
     .single();
 
-  if (!error && data) {
+  if (!error && data?.dados) {
     creds = data.dados;
   }
 
   return {
     state: {
-      creds,
+      creds, // pode ser undefined, e isso é o que queremos
       keys: {},
     },
     async saveCreds() {

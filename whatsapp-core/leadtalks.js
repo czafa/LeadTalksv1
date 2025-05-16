@@ -13,7 +13,7 @@ import {
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import { createClient } from "@supabase/supabase-js";
-import { supabaseAuthState } from "./lib/supabaseAuth.ts"; // ajuste o caminho se necessário
+import { supabaseAuthState } from "./lib/supabaseAuth.js"; // ajuste o caminho se necessário
 
 import { setQrCode } from "./qrStore.js";
 
