@@ -1,43 +1,32 @@
-// useQr.ts
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import * as QRCode from "qrcode";
 
 export function useQr() {
-  const [statusMsg, setStatusMsg] = useState("Aguardando conexão...");
-  const [loading, setLoading] = useState(true);
+  const [qr, setQr] = useState<string | null>(null);
 
-  const carregarQr = async (
-    usuario_id: string,
-    canvasRef?: HTMLCanvasElement
-  ) => {
-    try {
-      const { data, error } = await supabase
-        .from("qr")
-        .select("qr")
-        .eq("usuario_id", usuario_id)
-        .order("criado_em", { ascending: false })
-        .limit(1)
-        .single();
+  useEffect(() => {
+    const carregarQr = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const usuario_id = sessionData?.session?.user?.id;
 
-      if (error || !data?.qr) {
-        setLoading(false);
-        setStatusMsg("❌ QR code não encontrado.");
-        return;
+      if (!usuario_id) return;
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/qr?usuario_id=${usuario_id}`
+        );
+        const data = await response.json();
+        if (data.qr) setQr(data.qr);
+      } catch (e) {
+        console.error("Erro ao carregar QR:", e);
       }
+    };
 
-      if (canvasRef) {
-        await QRCode.toCanvas(canvasRef, data.qr, { width: 256 });
-      }
+    carregarQr();
+    const intervalo = setInterval(carregarQr, 5000);
 
-      setLoading(false);
-      setStatusMsg("✅ QR carregado do Supabase.");
-    } catch (err) {
-      console.error("Erro ao carregar QR:", err);
-      setLoading(false);
-      setStatusMsg("❌ Erro ao carregar QR Code.");
-    }
-  };
+    return () => clearInterval(intervalo);
+  }, []);
 
-  return { carregarQr, statusMsg, loading };
+  return qr;
 }

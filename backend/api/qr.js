@@ -1,6 +1,16 @@
+import { applyCors } from "../lib/cors.js";
+import fetch from "node-fetch";
+import { supabase } from "../lib/supabase.js";
+
 export default async function handler(req, res) {
   console.log("📦 Requisição recebida em /api/qr");
   if (applyCors(res, req)) return;
+
+  const usuario_id = req.query.usuario_id || req.body?.usuario_id;
+
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+  }
 
   try {
     const { data, error } = await supabase
@@ -21,7 +31,7 @@ export default async function handler(req, res) {
     await fetch(`${apiUrl}/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario_id: req.query.usuario_id }),
+      body: JSON.stringify({ usuario_id }),
     });
 
     // ✅ BUSCAR QR Code
