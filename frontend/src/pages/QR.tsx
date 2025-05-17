@@ -1,4 +1,3 @@
-// QR.tsx
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";

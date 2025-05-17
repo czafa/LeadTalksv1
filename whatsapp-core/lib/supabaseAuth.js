@@ -1,9 +1,23 @@
+// whatsapp-core/lib/supabaseAuth.js
 import { supabase } from "../supabase.js";
+import { useMultiFileAuthState } from "@whiskeysockets/baileys";
+import path from "path";
+import fs from "fs";
+
+// Diretório local onde o Baileys salva as sessões temporárias
+const SESSAO_DIR = "./temp_sessao";
+if (!fs.existsSync(SESSAO_DIR)) {
+  fs.mkdirSync(SESSAO_DIR, { recursive: true });
+}
 
 export async function supabaseAuthState(usuario_id) {
-  let creds;
+  const sessaoPath = path.join(SESSAO_DIR, usuario_id);
 
-  // tentar carregar a sessão do Supabase
+  const { state, saveCreds: originalSaveCreds } = await useMultiFileAuthState(
+    sessaoPath
+  );
+
+  // Tenta carregar do Supabase
   const { data, error } = await supabase
     .from("sessao_baileys")
     .select("dados")
@@ -11,20 +25,21 @@ export async function supabaseAuthState(usuario_id) {
     .single();
 
   if (!error && data?.dados) {
-    creds = data.dados;
+    console.log("✅ Sessão carregada do Supabase.");
+    state.creds = data.dados;
+  } else {
+    console.warn("⚠️ Nenhuma sessão no Supabase. Nova sessão será criada.");
   }
 
-  return {
-    state: {
-      creds, // pode ser undefined, e isso é o que queremos
-      keys: {},
-    },
-    async saveCreds() {
-      await supabase.from("sessao_baileys").upsert({
-        usuario_id,
-        dados: creds,
-        atualizado_em: new Date().toISOString(),
-      });
-    },
-  };
+  async function saveCreds() {
+    await originalSaveCreds(); // salva localmente
+    await supabase.from("sessao_baileys").upsert({
+      usuario_id,
+      dados: state.creds,
+      atualizado_em: new Date().toISOString(),
+    });
+    console.log("💾 Sessão salva no Supabase.");
+  }
+
+  return { state, saveCreds };
 }

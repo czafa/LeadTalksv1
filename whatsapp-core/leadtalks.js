@@ -92,45 +92,57 @@ async function aguardarContatos(timeout = 20000) {
 export async function startLeadTalk({ usuario_id, onQr }) {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await supabaseAuthState(usuario_id);
+  const { creds } = state;
 
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: true,
-    logger: pino({ level: "silent" }),
-    syncFullHistory: true,
-    generateHighQualityLinkPreview: true,
-    markOnlineOnConnect: true,
-  });
+  let sock;
 
-  store.bind(sock.ev);
+  if (!creds?.me) {
+    console.warn("[LeadTalk] ⚠️ Nenhuma sessão encontrada. Gerando QR...");
 
-  sock.ev.on("contacts.update", async (updates) => {
-    console.log("✅ Contatos atualizados:", updates);
-    const contatos = updates
-      .filter((c) => c.id.endsWith("@s.whatsapp.net"))
-      .map((c) => ({
-        nome: c.notify || c.name || c.pushname || c.id,
-        numero: c.id.split("@")[0],
-        tipo: "contato",
-        usuario_id,
-      }));
-    if (contatos.length) {
-      debugSalvarArquivosLocais({ contatos });
-      const { error } = await supabase
-        .from("contatos")
-        .upsert(contatos, { onConflict: ["numero", "usuario_id"] });
-      if (error) console.error("❌ Erro ao upsert contatos:", error.message);
-      else console.log(`☑️ ${contatos.length} contatos upseridos.`);
-    }
-  });
+    sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: true,
+      logger: pino({ level: "silent" }),
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+  } else {
+    sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: true,
+      logger: pino({ level: "silent" }),
+      syncFullHistory: true,
+      generateHighQualityLinkPreview: true,
+      markOnlineOnConnect: true,
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+    store.bind(sock.ev);
+  }
 
   sock.ev.on(
     "connection.update",
     async ({ connection, qr, lastDisconnect }) => {
-      if (qr && usuario_id) {
-        await supabase.from("qr").insert([{ usuario_id, qr }]);
+      if (qr) {
+        console.log("[LeadTalk] 📸 QR GERADO:", qr.slice(0, 30));
+        await supabase
+          .from("qr")
+          .upsert({ usuario_id, qr }, { onConflict: "usuario_id" });
         onQr?.(qr);
+      }
+
+      if (connection === "open") {
+        console.log("✅ Conectado ao WhatsApp");
+        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+        await supabase.from("sessao").upsert({ usuario_id, ativo: true });
+
+        if (await aguardarContatos()) {
+          await exportarContatos(usuario_id);
+        }
+        await new Promise((r) => setTimeout(r, 5000));
+        await exportarGruposESuasPessoas(sock, usuario_id);
       }
 
       if (connection === "close") {
@@ -138,29 +150,18 @@ export async function startLeadTalk({ usuario_id, onQr }) {
           lastDisconnect?.error instanceof Boom &&
           lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
         console.log("🔁 Conexão encerrada. Reconectar:", shouldReconnect);
-        if (shouldReconnect) startLeadTalk({ usuario_id, onQr });
-      }
-
-      if (connection === "open") {
-        console.log("✅ Conectado ao WhatsApp");
-        // Limpa QR e marca sessão ativa
-        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
-        await supabase
-          .from("sessao")
-          .upsert({ usuario_id, ativo: true }, { onConflict: ["usuario_id"] });
-
-        // Exporta contatos
-        if (await aguardarContatos()) {
-          await exportarContatos(usuario_id);
+        if (shouldReconnect) {
+          startLeadTalk({ usuario_id, onQr });
+        } else {
+          await supabase
+            .from("sessao")
+            .update({ ativo: false })
+            .eq("usuario_id", usuario_id);
         }
-        // Pequeno delay e exporta grupos/membros
-        await new Promise((r) => setTimeout(r, 5000));
-        await exportarGruposESuasPessoas(sock, usuario_id);
       }
     }
   );
 
-  sock.ev.on("creds.update", saveCreds);
   return sock;
 }
 
