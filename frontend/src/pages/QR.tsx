@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
@@ -7,15 +7,37 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, loading, statusMsg } = useQr();
+  const { carregarQr, loading, statusMsg, qrCode } = useQr();
+
+  const monitorarSessao = useCallback(
+    (usuarioId: string) => {
+      return supabase
+        .channel("sessao-status")
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "sessao",
+            filter: `usuario_id=eq.${usuarioId}`,
+          },
+          (payload) => {
+            if (payload.new.ativo) {
+              console.log("✅ Sessão ativada. Redirecionando...");
+              if (intervalRef.current) clearInterval(intervalRef.current);
+              navigate("/home");
+            }
+          }
+        )
+        .subscribe();
+    },
+    [navigate]
+  );
 
   useEffect(() => {
-    let subscription: RealtimeChannel | null = null;
-
-    verificarSessao();
-
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
@@ -32,40 +54,28 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
+      // Exibe o QR Code inicialmente
       await carregarQr(user.id, canvasRef.current || undefined);
 
+      // Faz polling do QR apenas se ainda não tiver um visível
       intervalRef.current = setInterval(() => {
-        carregarQr(user.id, canvasRef.current || undefined);
-      }, 5000);
+        if (!qrCode) {
+          carregarQr(user.id, canvasRef.current || undefined);
+        }
+      }, 30000);
 
-      subscription = monitorarSessao(user.id);
+      // Assina atualizações de sessão
+      subscriptionRef.current = monitorarSessao(user.id);
     }
 
-    function monitorarSessao(usuarioId: string) {
-      return supabase
-        .channel("sessao-status")
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "sessao",
-            filter: `usuario_id=eq.${usuarioId}`,
-          },
-          (payload) => {
-            if (payload.new.ativo) {
-              navigate("/home");
-            }
-          }
-        )
-        .subscribe();
-    }
+    verificarSessao();
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (subscription) supabase.removeChannel(subscription);
+      if (subscriptionRef.current)
+        supabase.removeChannel(subscriptionRef.current);
     };
-  }, [navigate, carregarQr]);
+  }, [navigate, carregarQr, qrCode, monitorarSessao]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">

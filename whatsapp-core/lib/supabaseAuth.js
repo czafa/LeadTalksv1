@@ -26,13 +26,15 @@ export async function supabaseAuthState(usuario_id) {
 
   if (!error && data?.dados) {
     console.log("✅ Sessão carregada do Supabase.");
-    state.creds = data.dados;
+    Object.assign(state.creds, data.dados); // mantém estrutura e referências
+    console.log("🧪 state.creds.me =", state.creds?.me);
   } else {
-    console.warn("⚠️ Nenhuma sessão no Supabase. Nova sessão será criada.");
+    console.warn("⚠️ Nenhuma sessão no Supabase. Nova será criada.");
   }
 
   async function saveCreds() {
     await originalSaveCreds(); // salva localmente
+    console.log("🧪 Salvando state.creds.me:", state.creds?.me);
     await supabase.from("sessao_baileys").upsert({
       usuario_id,
       dados: state.creds,

@@ -1,10 +1,18 @@
+// Importa variáveis de ambiente de um arquivo .env
 import dotenv from "dotenv";
+// Importa o módulo de sistema de arquivos
 import fs from "fs";
+// Importa módulo para manipulação de caminhos
 import path from "path";
+// Para obter __dirname em ES Modules
 import { fileURLToPath } from "url";
+// Logger pino para logs silenciosos
 import pino from "pino";
+// Importa o módulo crypto (criptografia)
 import crypto from "crypto";
+// Importa a biblioteca Boom para tratar erros
 import { Boom } from "@hapi/boom";
+// Importa funções principais do Baileys
 import {
   makeWASocket,
   useMultiFileAuthState,
@@ -12,37 +20,47 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
+// Cliente Supabase
 import { createClient } from "@supabase/supabase-js";
-import { supabaseAuthState } from "./lib/supabaseAuth.js"; // ajuste o caminho se necessário
-
+// Função customizada para autenticação com Supabase
+import { supabaseAuthState } from "./lib/supabaseAuth.js";
+// Função para setar o QR gerado
 import { setQrCode } from "./qrStore.js";
 
-// Corrige __dirname em ES modules
+// Mapa de controle de status por usuário (evita múltiplas execuções simultâneas)
+const leadTalkStatusMap = new Map();
+
+// Corrige __dirname em ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Carrega variáveis de ambiente
 dotenv.config();
+// Corrige "crypto" no escopo global se não estiver definido
 if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;
 
-// Supabase client usando Service Role Key para escrita
+// Inicializa cliente Supabase com chave de serviço (permite escrita)
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(process.env.SUPABASE_URL, SUPABASE_KEY);
 
+// Verifica se estamos em ambiente de produção
 const isProd = process.env.ENV_MODE === "production";
 console.log(`Modo: ${process.env.ENV_MODE}`);
 
-// Diretório de dados (cache e debug)
+// Cria diretório local para armazenar dados temporários (cache/debug)
 const DATA_DIR = path.resolve(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// Store em memória do Baileys
+// Cria store em memória para os eventos do WhatsApp
 const store = makeInMemoryStore({
   logger: pino({ level: "silent" }).child({ stream: "store" }),
 });
+// Lê dados anteriores salvos em disco
 store.readFromFile(path.join(DATA_DIR, "store.json"));
+// Salva em disco o store a cada 10 segundos
 setInterval(() => store.writeToFile(path.join(DATA_DIR, "store.json")), 10000);
 
-// Grava em disco para debug
+// Função auxiliar para salvar arquivos de debug (contatos, grupos e membros)
 function debugSalvarArquivosLocais({
   contatos = [],
   grupos = [],
@@ -77,6 +95,7 @@ function debugSalvarArquivosLocais({
   }
 }
 
+// Função para aguardar o carregamento de contatos
 async function aguardarContatos(timeout = 20000) {
   const start = Date.now();
   while (
@@ -89,82 +108,184 @@ async function aguardarContatos(timeout = 20000) {
   return Object.keys(store.contacts).length > 0;
 }
 
+// Função principal que inicia a conexão com o WhatsApp via Baileys
 export async function startLeadTalk({ usuario_id, onQr }) {
+  console.log(`[LeadTalk] Iniciando conexão para usuario_id: ${usuario_id}`);
+
+  // Verifica se já existe uma conexão em andamento para o usuário
+  if (leadTalkStatusMap.get(usuario_id) === "running") {
+    console.log(`⛔ Conexão já em andamento para ${usuario_id}. Abortando.`);
+    return;
+  }
+  leadTalkStatusMap.set(usuario_id, "running");
+
+  //Verificar se já existe sessão ativa no início de startLeadTalk
+  const { data: sessaoAtiva, error } = await supabase
+    .from("sessao")
+    .select("ativo")
+    .eq("usuario_id", usuario_id);
+
+  if (sessaoAtiva[0]?.ativo) {
+    console.log("⚠️ Sessão já ativa no Supabase. Abortando nova instância.");
+    leadTalkStatusMap.delete(usuario_id);
+    return;
+  }
+
+  // Busca a versão mais recente do WhatsApp compatível com Baileys
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await supabaseAuthState(usuario_id);
   const { creds } = state;
 
-  let sock;
-
+  // Se não houver sessão salva, gera QR para login
   if (!creds?.me) {
-    console.warn("[LeadTalk] ⚠️ Nenhuma sessão encontrada. Gerando QR...");
+    console.warn(
+      "[LeadTalk] ⚠️ Nenhuma sessão encontrada. Gerando QR temporário..."
+    );
 
-    sock = makeWASocket({
+    const tempSock = makeWASocket({
       version,
       auth: state,
       printQRInTerminal: true,
       logger: pino({ level: "silent" }),
     });
 
-    sock.ev.on("creds.update", saveCreds);
-  } else {
-    sock = makeWASocket({
-      version,
-      auth: state,
-      printQRInTerminal: true,
-      logger: pino({ level: "silent" }),
-      syncFullHistory: true,
-      generateHighQualityLinkPreview: true,
-      markOnlineOnConnect: true,
-    });
+    tempSock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("creds.update", saveCreds);
-    store.bind(sock.ev);
-  }
+    tempSock.ev.on("connection.update", async ({ connection, qr }) => {
+      if (qr && usuario_id) {
+        console.log("[LeadTalk] 📸 QR gerado (sessão nova):", qr.slice(0, 30));
 
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
-      if (qr) {
-        console.log("[LeadTalk] 📸 QR GERADO:", qr.slice(0, 30));
-        await supabase
+        const { error } = await supabase
           .from("qr")
-          .upsert({ usuario_id, qr }, { onConflict: "usuario_id" });
+          .upsert(
+            { usuario_id, qr, criado_em: new Date().toISOString() },
+            { onConflict: ["usuario_id"] }
+          );
+
+        if (error) {
+          console.error("❌ Falha ao salvar QR no Supabase:", error.message);
+        }
+
         onQr?.(qr);
       }
 
-      if (connection === "open") {
-        console.log("✅ Conectado ao WhatsApp");
+      if (connection === "open" && tempSock.user?.id) {
+        console.log("✅ Sessão criada com sucesso. Encerrando tempSock.");
         await supabase.from("qr").delete().eq("usuario_id", usuario_id);
-        await supabase.from("sessao").upsert({ usuario_id, ativo: true });
+        await tempSock.logout();
+        tempSock.ev.removeAllListeners();
 
-        if (await aguardarContatos()) {
-          await exportarContatos(usuario_id);
-        }
-        await new Promise((r) => setTimeout(r, 5000));
-        await exportarGruposESuasPessoas(sock, usuario_id);
+        // Atualiza o estado da sessão no Supabase
+        leadTalkStatusMap.set(usuario_id, "done");
+
+        // Somente agora prossegue para conexão real
+        return startLeadTalk({ usuario_id, onQr });
+      }
+
+      if (connection === "close") {
+        console.log("🔒 tempSock desconectado (sem retry automático).");
+        leadTalkStatusMap.set(usuario_id, "done");
+      }
+    });
+
+    return; // interrompe a função até o login acontecer
+  }
+
+  // Cria socket Baileys com sessão ativa
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: true,
+    logger: pino({ level: "silent" }),
+    syncFullHistory: true,
+    generateHighQualityLinkPreview: true,
+    markOnlineOnConnect: true,
+  });
+
+  // Trata eventos de conexão com WhatsApp
+  sock.ev.on(
+    "connection.update",
+    async ({ connection, qr, lastDisconnect }) => {
+      if (qr && usuario_id) {
+        console.log("[LeadTalk] 📸 QR GERADO:", qr.slice(0, 30));
+        await supabase
+          .from("qr")
+          .upsert(
+            { usuario_id, qr, criado_em: new Date().toISOString() },
+            { onConflict: ["usuario_id"] }
+          );
+
+        onQr?.(qr);
       }
 
       if (connection === "close") {
         const shouldReconnect =
           lastDisconnect?.error instanceof Boom &&
           lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+
         console.log("🔁 Conexão encerrada. Reconectar:", shouldReconnect);
+
         if (shouldReconnect) {
-          startLeadTalk({ usuario_id, onQr });
+          setTimeout(() => startLeadTalk({ usuario_id, onQr }), 15000);
         } else {
           await supabase
             .from("sessao")
-            .update({ ativo: false })
-            .eq("usuario_id", usuario_id);
+            .upsert(
+              { usuario_id, ativo: false },
+              { onConflict: ["usuario_id"] }
+            );
+          console.log("🔒 Sessão encerrada, marcada como inativa.");
         }
+      }
+
+      if (connection === "open") {
+        console.log("✅ Conectado ao WhatsApp");
+        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+        await supabase
+          .from("sessao")
+          .upsert({ usuario_id, ativo: true }, { onConflict: ["usuario_id"] });
+
+        if (await aguardarContatos()) {
+          await exportarContatos(usuario_id);
+        }
+
+        await new Promise((r) => setTimeout(r, 5000));
+        await exportarGruposESuasPessoas(sock, usuario_id);
       }
     }
   );
 
+  // Atualiza credenciais quando mudam
+  sock.ev.on("creds.update", saveCreds);
+  // Liga o store ao socket
+  store.bind(sock.ev);
+
+  // Trata atualizações de contatos
+  sock.ev.on("contacts.update", async (updates) => {
+    const contatos = updates
+      .filter((c) => c.id.endsWith("@s.whatsapp.net"))
+      .map((c) => ({
+        nome: c.notify || c.name || c.pushname || c.id,
+        numero: c.id.split("@")[0],
+        tipo: "contato",
+        usuario_id,
+      }));
+
+    if (contatos.length) {
+      debugSalvarArquivosLocais({ contatos });
+      const { error } = await supabase
+        .from("contatos")
+        .upsert(contatos, { onConflict: ["numero", "usuario_id"] });
+      if (error) console.error("❌ Erro ao upsert contatos:", error.message);
+      else console.log(`☑️ ${contatos.length} contatos upseridos.`);
+    }
+  });
+
+  leadTalkStatusMap.set(usuario_id, "done");
   return sock;
 }
 
+// Exporta contatos presentes no store para o Supabase
 async function exportarContatos(usuario_id) {
   const contatos = Object.entries(store.contacts)
     .filter(([jid]) => jid.endsWith("@s.whatsapp.net"))
@@ -176,7 +297,6 @@ async function exportarContatos(usuario_id) {
     }));
 
   debugSalvarArquivosLocais({ contatos });
-
   const { data, error } = await supabase
     .from("contatos")
     .upsert(contatos, { onConflict: ["numero", "usuario_id"] });
@@ -189,6 +309,7 @@ async function exportarContatos(usuario_id) {
   }
 }
 
+// Exporta grupos e participantes usando metadata
 async function exportarGruposESuasPessoas(sock, usuario_id) {
   const chats = store.chats.all().filter((c) => c.id.endsWith("@g.us"));
   const grupos = [];
@@ -222,7 +343,6 @@ async function exportarGruposESuasPessoas(sock, usuario_id) {
   const { data: dataGrupos, error: errorGrupos } = await supabase
     .from("grupos")
     .upsert(grupos, { onConflict: ["grupo_jid", "usuario_id"] });
-
   if (errorGrupos) {
     console.error("❌ Erro exportarGrupos:", errorGrupos);
   } else {
@@ -235,7 +355,6 @@ async function exportarGruposESuasPessoas(sock, usuario_id) {
     .upsert(membros, {
       onConflict: ["grupo_jid", "membro_numero", "usuario_id"],
     });
-
   if (errorMembros) {
     console.error("❌ Erro exportarMembros:", errorMembros);
   } else {
