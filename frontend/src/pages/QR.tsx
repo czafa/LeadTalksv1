@@ -1,3 +1,5 @@
+// frontend/src/pages/QR.tsx
+
 import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -56,7 +58,11 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      await carregarQr(user.id, canvasRef.current || undefined);
+      if (canvasRef.current) {
+        await carregarQr(user.id, canvasRef.current);
+      } else {
+        console.warn("❌ Canvas ainda não disponível ao carregar QR");
+      }
 
       intervalRef.current = setInterval(async () => {
         tentativa++;
@@ -96,12 +102,9 @@ export default function QR() {
       <h1 className="text-2xl font-bold mb-4">📱 Escaneie o QR Code</h1>
       <p className="mb-4 text-gray-700">Conecte seu WhatsApp para iniciar.</p>
 
-      {loading ? (
-        <div className="flex justify-center mb-4">
-          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 animate-spin"></div>
-        </div>
-      ) : (
-        <canvas ref={canvasRef} className="mx-auto mb-4" />
+      <canvas ref={canvasRef} className="mx-auto mb-4" />
+      {loading && (
+        <div className="text-sm text-gray-600">⏳ Carregando QR...</div>
       )}
 
       <p className="text-sm text-gray-600 mt-4">{statusMsg}</p>
