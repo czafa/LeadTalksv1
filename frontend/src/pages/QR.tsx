@@ -40,7 +40,7 @@ export default function QR() {
   );
 
   useEffect(() => {
-    let tentativa = 0; // contador de tentativas
+    let tentativa = 0;
 
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
@@ -58,15 +58,12 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      if (canvasRef.current) {
-        await carregarQr(user.id, canvasRef.current);
-      } else {
-        console.warn("❌ Canvas ainda não disponível ao carregar QR");
-      }
+      await carregarQr(user.id, canvasRef.current || undefined);
 
+      // ✅ Polling controlado com break ao sucesso ou limite
       intervalRef.current = setInterval(async () => {
         tentativa++;
-        console.log(`Tentativa ${tentativa}/5 de busca do QR`);
+        console.log(`⏱ Tentativa ${tentativa}/5`);
 
         const qrCheck = await fetch(
           `${import.meta.env.VITE_API_URL}/qr?usuario_id=${user.id}`
@@ -74,17 +71,18 @@ export default function QR() {
         const qrRes = await qrCheck.json();
 
         if (qrRes?.qr) {
-          console.log("🎯 QR encontrado via polling");
+          console.log("✅ QR encontrado no backend. Parando polling.");
           await carregarQr(user.id, canvasRef.current || undefined);
           clearInterval(intervalRef.current!);
         }
 
         if (tentativa >= 5) {
-          console.warn("❌ Limite de tentativas atingido.");
+          console.warn("❌ Tentativas esgotadas. Parando polling.");
           clearInterval(intervalRef.current!);
         }
-      }, 30000); // a cada 30s
+      }, 15000); // ⏱ Reduzido para 15s durante testes
 
+      // 👂 WebSocket para saber se foi autenticado
       subscriptionRef.current = monitorarSessao(user.id);
     }
 
