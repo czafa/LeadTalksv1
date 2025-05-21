@@ -8,6 +8,15 @@ export default async function handler(req, res) {
 
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
 
+  // 🕵️ Logger estratégico para monitorar origem e frequência
+  const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+  const userAgent = req.headers["user-agent"];
+  const now = new Date().toISOString();
+
+  console.log(
+    `[QR Monitor] 📥 ${now} - usuario_id=${usuario_id} - IP=${ip} - Agent=${userAgent}`
+  );
+
   if (!usuario_id) {
     return res.status(400).json({ error: "usuario_id é obrigatório" });
   }

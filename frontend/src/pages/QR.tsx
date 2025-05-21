@@ -38,6 +38,7 @@ export default function QR() {
   );
 
   useEffect(() => {
+    let tentativa = 0; // contador de tentativas
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
@@ -57,12 +58,13 @@ export default function QR() {
       // Exibe o QR Code inicialmente
       await carregarQr(user.id, canvasRef.current || undefined);
 
-      // Faz polling do QR apenas se ainda não tiver um visível
+      // Faz polling limitado para evitar loop
       intervalRef.current = setInterval(() => {
-        if (!qrCode) {
+        if (!qrCode && tentativa < 5) {
+          tentativa++;
           carregarQr(user.id, canvasRef.current || undefined);
         }
-      }, 30000);
+      }, 30000); // tenta no máximo 5x a cada 10s
 
       // Assina atualizações de sessão
       subscriptionRef.current = monitorarSessao(user.id);
