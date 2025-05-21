@@ -10,7 +10,7 @@ export default function QR() {
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, loading, statusMsg, qrCode } = useQr();
+  const { carregarQr, loading, statusMsg } = useQr();
 
   const monitorarSessao = useCallback(
     (usuarioId: string) => {
@@ -39,6 +39,7 @@ export default function QR() {
 
   useEffect(() => {
     let tentativa = 0; // contador de tentativas
+
     async function verificarSessao() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
@@ -55,18 +56,29 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
-      // Exibe o QR Code inicialmente
       await carregarQr(user.id, canvasRef.current || undefined);
 
-      // Faz polling limitado para evitar loop
-      intervalRef.current = setInterval(() => {
-        if (!qrCode && tentativa < 5) {
-          tentativa++;
-          carregarQr(user.id, canvasRef.current || undefined);
-        }
-      }, 30000); // tenta no máximo 5x a cada 10s
+      intervalRef.current = setInterval(async () => {
+        tentativa++;
+        console.log(`Tentativa ${tentativa}/5 de busca do QR`);
 
-      // Assina atualizações de sessão
+        const qrCheck = await fetch(
+          `${import.meta.env.VITE_API_URL}/qr?usuario_id=${user.id}`
+        );
+        const qrRes = await qrCheck.json();
+
+        if (qrRes?.qr) {
+          console.log("🎯 QR encontrado via polling");
+          await carregarQr(user.id, canvasRef.current || undefined);
+          clearInterval(intervalRef.current!);
+        }
+
+        if (tentativa >= 5) {
+          console.warn("❌ Limite de tentativas atingido.");
+          clearInterval(intervalRef.current!);
+        }
+      }, 30000); // a cada 30s
+
       subscriptionRef.current = monitorarSessao(user.id);
     }
 
@@ -77,7 +89,7 @@ export default function QR() {
       if (subscriptionRef.current)
         supabase.removeChannel(subscriptionRef.current);
     };
-  }, [navigate, carregarQr, qrCode, monitorarSessao]);
+  }, [navigate, carregarQr, monitorarSessao]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">

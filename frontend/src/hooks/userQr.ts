@@ -16,7 +16,11 @@ export function useQr() {
       );
       const data = await res.json();
 
+      console.log("📡 Resposta da API /qr:", data);
+      console.log("🎨 canvas recebido:", canvas);
+
       if (!data?.qr) {
+        console.warn("⚠️ Nenhum QR encontrado no backend.");
         setStatusMsg("QR não encontrado");
         return;
       }
@@ -24,12 +28,17 @@ export function useQr() {
       setQrCode(data.qr);
       setStatusMsg("QR pronto!");
 
+      console.log("✅ QR recebido do backend:", data.qr);
+
       if (canvas) {
         await QRCode.toCanvas(canvas, data.qr);
+        console.log("🖨️ QR renderizado no canvas com sucesso.");
+      } else {
+        console.warn("⚠️ Canvas não está disponível. QR não foi desenhado.");
       }
-    } catch (e) {
+    } catch (err) {
+      console.error("❌ Erro ao buscar ou renderizar QR:", err);
       setStatusMsg("Erro ao buscar QR");
-      console.error(e);
     } finally {
       setLoading(false);
     }
