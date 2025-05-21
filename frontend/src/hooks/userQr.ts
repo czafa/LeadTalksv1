@@ -16,31 +16,32 @@ export function useQr() {
       );
       const data = await res.json();
 
-      console.log("📡 Resposta da API /qr:", data);
-      console.log("🎨 canvas recebido:", canvas);
-
       if (!data?.qr) {
-        console.warn("⚠️ Nenhum QR encontrado no backend.");
         setStatusMsg("QR não encontrado");
+        return;
+      }
+
+      // Evita reprocessar o mesmo QR
+      if (data.qr === qrCode) {
+        setLoading(false);
         return;
       }
 
       setQrCode(data.qr);
       setStatusMsg("QR pronto!");
 
-      console.log("✅ QR recebido do backend:", data.qr);
+      console.log("🎨 canvasRef.current:", canvas);
+      console.log("📦 QR recebido do backend:", data.qr);
 
       if (canvas) {
         await QRCode.toCanvas(canvas, data.qr);
-        console.log("🖨️ QR renderizado no canvas com sucesso.");
-      } else {
-        console.warn("⚠️ Canvas não está disponível. QR não foi desenhado.");
+        console.log("✅ QR renderizado no canvas com sucesso.");
       }
     } catch (err) {
-      console.error("❌ Erro ao buscar ou renderizar QR:", err);
+      console.error("❌ Erro ao renderizar o QR no canvas:", err);
       setStatusMsg("Erro ao buscar QR");
     } finally {
-      setLoading(false);
+      setLoading(false); // 🛠️ Garantido em todos os caminhos
     }
   };
 
