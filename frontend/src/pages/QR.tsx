@@ -1,10 +1,30 @@
-// frontend/src/pages/QR.tsx
-
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+
+// ✅ Função auxiliar para iniciar a sessão no backend
+async function iniciarSessao(usuario_id: string, token: string) {
+  try {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ usuario_id }),
+    });
+
+    if (!res.ok) {
+      console.error("[LeadTalk] ❌ Falha ao iniciar sessão no backend.");
+    } else {
+      console.log("[LeadTalk] 🚀 Sessão iniciada no backend.");
+    }
+  } catch (err) {
+    console.error("[LeadTalk] ❌ Erro ao requisitar backend:", err);
+  }
+}
 
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -12,7 +32,8 @@ export default function QR() {
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, loading, statusMsg } = useQr();
+  const { carregarQr, statusMsg } = useQr();
+  const [esperandoQr, setEsperandoQr] = useState(true);
 
   const monitorarSessao = useCallback(
     (usuarioId: string) => {
@@ -60,16 +81,21 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo === true) return navigate("/home");
 
-      // ✅ Carrega QR imediatamente
-      await carregarQr(user.id, canvasRef.current || undefined);
+      // ✅ 1. Inicia sessão no backend imediatamente
+      await iniciarSessao(user.id, token);
+      setEsperandoQr(true); // inicia loading visual
 
-      // 👂 Escuta sessão em tempo real
-      subscriptionRef.current = monitorarSessao(user.id);
-
-      // ⏳ Delay ANTES de iniciar polling (para Supabase propagar)
+      // ✅ 2. Aguarda backend salvar QR no Supabase
       await new Promise((resolve) => setTimeout(resolve, 5000));
 
-      // ✅ Polling controlado
+      // ✅ 3. Carrega QR do Supabase
+      await carregarQr(user.id, canvasRef.current || undefined);
+      setEsperandoQr(false);
+
+      // ✅ 4. Escuta sessão ativada
+      subscriptionRef.current = monitorarSessao(user.id);
+
+      // ✅ 5. Polling adicional para garantir QR em atraso
       intervalRef.current = setInterval(async () => {
         tentativa++;
         console.log(`⏱ Tentativa ${tentativa}/5`);
@@ -82,6 +108,7 @@ export default function QR() {
         if (qrRes?.qr) {
           console.log("✅ QR encontrado no backend. Parando polling.");
           await carregarQr(user.id, canvasRef.current || undefined);
+          setEsperandoQr(false);
           clearInterval(intervalRef.current!);
         }
 
@@ -89,7 +116,7 @@ export default function QR() {
           console.warn("❌ Tentativas esgotadas. Parando polling.");
           clearInterval(intervalRef.current!);
         }
-      }, 15000);
+      }, 10000); // tenta a cada 10 segundos
     }
 
     verificarSessao();
@@ -107,8 +134,12 @@ export default function QR() {
       <p className="mb-4 text-gray-700">Conecte seu WhatsApp para iniciar.</p>
 
       <canvas ref={canvasRef} className="mx-auto mb-4" />
-      {loading && (
-        <div className="text-sm text-gray-600">⏳ Carregando QR...</div>
+
+      {esperandoQr && (
+        <div className="flex flex-col items-center justify-center mt-6 animate-pulse">
+          <div className="w-12 h-12 border-4 border-blue-500 border-dashed rounded-full animate-spin mb-3"></div>
+          <p className="text-blue-700 text-sm font-medium">Preparando QR...</p>
+        </div>
       )}
 
       <p className="text-sm text-gray-600 mt-4">{statusMsg}</p>
