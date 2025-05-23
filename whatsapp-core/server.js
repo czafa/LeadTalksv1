@@ -54,7 +54,7 @@ app.post("/api/enviar", async (req, res) => {
 });
 
 // Novo endpoint para iniciar sessão com usuário específico
-// Novo endpoint para iniciar sessão com usuário específico
+// server.js
 app.post("/start", async (req, res) => {
   const { usuario_id } = req.body;
 
@@ -62,8 +62,12 @@ app.post("/start", async (req, res) => {
     return res.status(400).json({ error: "usuario_id é obrigatório" });
   }
 
+  if (socketInstancia) {
+    console.log(`[LeadTalk] ⚠️ Sessão já está ativa para ${usuario_id}`);
+    return res.status(200).json({ status: "Sessão já ativa" });
+  }
+
   try {
-    // Verifica se o usuário existe no Supabase Auth
     const { data: usuario, error } = await supabase.auth.admin.getUserById(
       usuario_id
     );

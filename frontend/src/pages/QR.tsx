@@ -1,6 +1,6 @@
 // frontend/src/pages/QR.tsx
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
@@ -12,29 +12,55 @@ export default function QR() {
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, loading, statusMsg } = useQr();
+  const { carregarQr, statusMsg } = useQr();
+  const [esperandoQr, setEsperandoQr] = useState(true);
 
   const monitorarSessao = useCallback(
     (usuarioId: string) => {
-      return supabase
-        .channel("sessao-status")
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "sessao",
-            filter: `usuario_id=eq.${usuarioId}`,
-          },
-          (payload) => {
-            if (payload.new.ativo) {
-              console.log("✅ Sessão ativada. Redirecionando...");
-              if (intervalRef.current) clearInterval(intervalRef.current);
-              navigate("/home");
+      const canal = supabase.channel("sessao-status");
+
+      setTimeout(() => {
+        canal
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "sessao",
+              filter: `usuario_id=eq.${usuarioId}`,
+            },
+            (payload) => {
+              if (payload.new.ativo === true) {
+                console.log("✅ Sessão inserida como ativa. Redirecionando...");
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                navigate("/home");
+              }
             }
-          }
-        )
-        .subscribe();
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "sessao",
+              filter: `usuario_id=eq.${usuarioId}`,
+            },
+            (payload) => {
+              if (payload.new.ativo === true) {
+                console.log(
+                  "✅ Sessão atualizada como ativa. Redirecionando..."
+                );
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                navigate("/home");
+              }
+            }
+          )
+          .subscribe((status) => {
+            console.log("📡 Canal de sessão subscrito:", status);
+          });
+      }, 1500); // ⏳ Delay para garantir que a sessão já foi inserida
+
+      return canal;
     },
     [navigate]
   );
@@ -58,7 +84,11 @@ export default function QR() {
       const result = await response.json();
       if (result?.ativo) return navigate("/home");
 
+      console.log("⏳ Aguardando 5s para permitir tempo de geração do QR...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
       await carregarQr(user.id, canvasRef.current || undefined);
+      setEsperandoQr(false);
 
       // ✅ Polling controlado com break ao sucesso ou limite
       intervalRef.current = setInterval(async () => {
@@ -73,6 +103,7 @@ export default function QR() {
         if (qrRes?.qr) {
           console.log("✅ QR encontrado no backend. Parando polling.");
           await carregarQr(user.id, canvasRef.current || undefined);
+          setEsperandoQr(false);
           clearInterval(intervalRef.current!);
         }
 
@@ -101,8 +132,11 @@ export default function QR() {
       <p className="mb-4 text-gray-700">Conecte seu WhatsApp para iniciar.</p>
 
       <canvas ref={canvasRef} className="mx-auto mb-4" />
-      {loading && (
-        <div className="text-sm text-gray-600">⏳ Carregando QR...</div>
+      {esperandoQr && (
+        <div className="flex flex-col items-center justify-center mt-6 animate-pulse">
+          <div className="w-12 h-12 border-4 border-blue-500 border-dashed rounded-full animate-spin mb-3"></div>
+          <p className="text-blue-700 text-sm font-medium">Preparando QR...</p>
+        </div>
       )}
 
       <p className="text-sm text-gray-600 mt-4">{statusMsg}</p>
