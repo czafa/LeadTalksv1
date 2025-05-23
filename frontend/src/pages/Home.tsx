@@ -92,7 +92,7 @@ export default function Home() {
     setGruposExpandido((prev) => ({ ...prev, [jid]: !prev[jid] }));
   };
 
-  const selecionarGrupo = (jid: string, membros: Membro[]) => {
+  const selecionarGrupo = (membros: Membro[]) => {
     const numeros = membros.map((m) => m.numero);
     const todosSelecionados = numeros.every((n) =>
       contatosSelecionados.includes(n)
@@ -249,9 +249,7 @@ export default function Home() {
                       <input
                         type="checkbox"
                         checked={todosSelecionados}
-                        onChange={() =>
-                          selecionarGrupo(grupo.grupo_jid, membros)
-                        }
+                        onChange={() => selecionarGrupo(membros)}
                       />
                     </div>
                   </div>
