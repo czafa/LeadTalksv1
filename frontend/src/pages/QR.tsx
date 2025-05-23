@@ -27,7 +27,9 @@ export default function QR() {
             filter: `usuario_id=eq.${usuarioId}`,
           },
           (payload) => {
-            if (payload.new.ativo) {
+            const ativo =
+              payload?.new?.ativo === true || payload?.new?.ativo === "true";
+            if (ativo) {
               console.log("✅ Sessão ativada. Redirecionando...");
               if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
@@ -56,11 +58,18 @@ export default function QR() {
       });
 
       const result = await response.json();
-      if (result?.ativo) return navigate("/home");
+      if (result?.ativo === true) return navigate("/home");
 
+      // ✅ Carrega QR imediatamente
       await carregarQr(user.id, canvasRef.current || undefined);
 
-      // ✅ Polling controlado com break ao sucesso ou limite
+      // 👂 Escuta sessão em tempo real
+      subscriptionRef.current = monitorarSessao(user.id);
+
+      // ⏳ Delay ANTES de iniciar polling (para Supabase propagar)
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      // ✅ Polling controlado
       intervalRef.current = setInterval(async () => {
         tentativa++;
         console.log(`⏱ Tentativa ${tentativa}/5`);
@@ -80,10 +89,7 @@ export default function QR() {
           console.warn("❌ Tentativas esgotadas. Parando polling.");
           clearInterval(intervalRef.current!);
         }
-      }, 15000); // ⏱ Reduzido para 15s durante testes
-
-      // 👂 WebSocket para saber se foi autenticado
-      subscriptionRef.current = monitorarSessao(user.id);
+      }, 15000);
     }
 
     verificarSessao();
