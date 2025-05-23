@@ -1,4 +1,4 @@
-//bfrontend/src/pages/Home.tsx
+//frontend/src/pages/Home.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
@@ -16,12 +16,16 @@ type Grupo = {
   tamanho: number;
 };
 
-type MembrosPorGrupo = Record<string, { nome: string; numero: string }[]>;
+type Membro = { nome: string; numero: string };
+type MembrosPorGrupo = Record<string, Membro[]>;
 
 export default function Home() {
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [membrosPorGrupo, setMembrosPorGrupo] = useState<MembrosPorGrupo>({});
+  const [gruposExpandido, setGruposExpandido] = useState<
+    Record<string, boolean>
+  >({});
   const [mensagem, setMensagem] = useState("");
   const [intervalo, setIntervalo] = useState(10);
   const [logEnvio, setLogEnvio] = useState<string[]>([]);
@@ -65,10 +69,11 @@ export default function Home() {
         }).then((res) => res.json()),
       ]);
 
-      if (contatoRes.error) {
-        console.error("Erro ao carregar contatos:", contatoRes.error);
+      if (Array.isArray(contatoRes)) {
+        setContatos(contatoRes);
       } else {
-        setContatos(contatoRes.contatos || []);
+        console.error("Erro ao carregar contatos:", contatoRes?.error);
+        setContatos([]);
       }
 
       setGrupos(grupoRes);
@@ -81,6 +86,25 @@ export default function Home() {
   const obterNome = (numero: string) => {
     const contato = contatos.find((c) => c.numero === numero);
     return contato?.nome || "contato";
+  };
+
+  const toggleGrupo = (jid: string) => {
+    setGruposExpandido((prev) => ({ ...prev, [jid]: !prev[jid] }));
+  };
+
+  const selecionarGrupo = (jid: string, membros: Membro[]) => {
+    const numeros = membros.map((m) => m.numero);
+    const todosSelecionados = numeros.every((n) =>
+      contatosSelecionados.includes(n)
+    );
+
+    setContatosSelecionados((prev) => {
+      if (todosSelecionados) {
+        return prev.filter((n) => !numeros.includes(n));
+      } else {
+        return [...new Set([...prev, ...numeros])];
+      }
+    });
   };
 
   const handleEnviarMensagens = async () => {
@@ -156,12 +180,6 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="text-center mb-4">
-        <button className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">
-          📄 Ver Log
-        </button>
-      </div>
-
       <pre className="bg-white text-gray-800 p-4 rounded shadow max-h-64 overflow-y-auto whitespace-pre-wrap">
         {logEnvio.join("\n")}
       </pre>
@@ -209,20 +227,46 @@ export default function Home() {
         <div className="bg-white shadow rounded p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Grupos</h2>
           <ul className="space-y-4">
-            {grupos.map((grupo) => (
-              <li key={grupo.grupo_jid} className="border rounded p-2">
-                <div className="font-bold">
-                  {grupo.nome} ({grupo.tamanho} membros)
-                </div>
-                <ul className="ml-4 mt-1 list-disc text-sm">
-                  {(membrosPorGrupo[grupo.grupo_jid] || []).map((membro, i) => (
-                    <li key={i}>
-                      {membro.nome} ({membro.numero})
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
+            {grupos.map((grupo) => {
+              const membros = membrosPorGrupo[grupo.grupo_jid] || [];
+              const expandido = gruposExpandido[grupo.grupo_jid] || false;
+              const todosSelecionados = membros.every((m) =>
+                contatosSelecionados.includes(m.numero)
+              );
+              return (
+                <li key={grupo.grupo_jid} className="border rounded p-2">
+                  <div className="flex justify-between items-center">
+                    <div className="font-bold">
+                      {grupo.nome} ({grupo.tamanho} membros)
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="text-blue-600 underline"
+                        onClick={() => toggleGrupo(grupo.grupo_jid)}
+                      >
+                        {expandido ? "Fechar" : "Ver membros"}
+                      </button>
+                      <input
+                        type="checkbox"
+                        checked={todosSelecionados}
+                        onChange={() =>
+                          selecionarGrupo(grupo.grupo_jid, membros)
+                        }
+                      />
+                    </div>
+                  </div>
+                  {expandido && (
+                    <ul className="ml-4 mt-2 list-disc text-sm">
+                      {membros.map((membro, i) => (
+                        <li key={i}>
+                          {membro.nome} ({membro.numero})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>
