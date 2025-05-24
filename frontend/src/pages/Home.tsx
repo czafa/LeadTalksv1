@@ -1,6 +1,7 @@
 //frontend/src/pages/Home.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_API_URL;
 
@@ -234,27 +235,44 @@ export default function Home() {
 
               return (
                 <li key={grupo.grupo_jid} className="border rounded p-2">
-                  <div
-                    className="font-bold flex justify-between items-center cursor-pointer"
-                    onClick={() => toggleGrupo(grupo.grupo_jid)}
-                  >
-                    <span>
-                      {grupo.nome} ({grupo.tamanho} membros)
-                    </span>
+                  <div className="flex justify-between items-center">
+                    {/* Checkbox para selecionar grupo */}
                     <input
                       type="checkbox"
                       checked={todosSelecionados}
-                      onChange={(e) => {
-                        e.stopPropagation(); // impede o clique no grupo de expandir ao clicar no checkbox
-                        selecionarGrupo(membros);
-                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => selecionarGrupo(membros)}
                     />
+
+                    {/* Nome do grupo */}
+                    <span
+                      className="flex-1 text-center font-bold cursor-pointer"
+                      onClick={() => toggleGrupo(grupo.grupo_jid)}
+                    >
+                      {grupo.nome} ({grupo.tamanho} membros)
+                    </span>
+
+                    {/* Ícone de expansão */}
+                    <button
+                      className="text-gray-600 px-2"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleGrupo(grupo.grupo_jid);
+                      }}
+                    >
+                      {expandido ? (
+                        <ChevronDown size={20} />
+                      ) : (
+                        <ChevronRight size={20} />
+                      )}
+                    </button>
                   </div>
 
                   {expandido && membros.length > 0 && (
                     <ul className="ml-4 mt-2 space-y-1 text-sm">
                       {membros.map((membro, i) => (
-                        <li key={i} className="flex gap-2 items-center">
+                        <li key={i} className="flex items-center gap-2">
                           <input
                             type="checkbox"
                             checked={contatosSelecionados.includes(
