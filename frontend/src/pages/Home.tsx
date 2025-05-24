@@ -98,13 +98,11 @@ export default function Home() {
       contatosSelecionados.includes(n)
     );
 
-    setContatosSelecionados((prev) => {
-      if (todosSelecionados) {
-        return prev.filter((n) => !numeros.includes(n));
-      } else {
-        return [...new Set([...prev, ...numeros])];
-      }
-    });
+    setContatosSelecionados((prev) =>
+      todosSelecionados
+        ? prev.filter((n) => !numeros.includes(n))
+        : [...new Set([...prev, ...numeros])]
+    );
   };
 
   const handleEnviarMensagens = async () => {
@@ -233,30 +231,44 @@ export default function Home() {
               const todosSelecionados = membros.every((m) =>
                 contatosSelecionados.includes(m.numero)
               );
+
               return (
                 <li key={grupo.grupo_jid} className="border rounded p-2">
-                  <div className="flex justify-between items-center">
-                    <div className="font-bold">
+                  <div
+                    className="font-bold flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleGrupo(grupo.grupo_jid)}
+                  >
+                    <span>
                       {grupo.nome} ({grupo.tamanho} membros)
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        className="text-blue-600 underline"
-                        onClick={() => toggleGrupo(grupo.grupo_jid)}
-                      >
-                        {expandido ? "Fechar" : "Ver membros"}
-                      </button>
-                      <input
-                        type="checkbox"
-                        checked={todosSelecionados}
-                        onChange={() => selecionarGrupo(membros)}
-                      />
-                    </div>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={todosSelecionados}
+                      onChange={(e) => {
+                        e.stopPropagation(); // impede o clique no grupo de expandir ao clicar no checkbox
+                        selecionarGrupo(membros);
+                      }}
+                    />
                   </div>
-                  {expandido && (
-                    <ul className="ml-4 mt-2 list-disc text-sm">
+
+                  {expandido && membros.length > 0 && (
+                    <ul className="ml-4 mt-2 space-y-1 text-sm">
                       {membros.map((membro, i) => (
-                        <li key={i}>
+                        <li key={i} className="flex gap-2 items-center">
+                          <input
+                            type="checkbox"
+                            checked={contatosSelecionados.includes(
+                              membro.numero
+                            )}
+                            onChange={(e) => {
+                              const numero = membro.numero;
+                              setContatosSelecionados((prev) =>
+                                e.target.checked
+                                  ? [...prev, numero]
+                                  : prev.filter((n) => n !== numero)
+                              );
+                            }}
+                          />
                           {membro.nome} ({membro.numero})
                         </li>
                       ))}
