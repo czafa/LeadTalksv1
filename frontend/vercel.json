@@ -3,6 +3,7 @@
     { "source": "/register", "destination": "/" },
     { "source": "/login", "destination": "/" },
     { "source": "/recover", "destination": "/" },
-    { "source": "/qr", "destination": "/" }
+    { "source": "/qr", "destination": "/" },
+    { "source": "/home", "destination": "/" }
   ]
 }

@@ -95,6 +95,34 @@ app.post("/start", async (req, res) => {
   }
 });
 
+// server.js (trecho final corrigido)
+
+async function reconectarSessao() {
+  try {
+    const { data, error } = await supabase
+      .from("sessao")
+      .select("usuario_id")
+      .eq("ativo", true);
+
+    if (error) throw error;
+    if (!data || data.length === 0) return;
+
+    const usuario_id = data[0].usuario_id;
+    console.log(`[LeadTalk] 🔁 Reconectando sessão para ${usuario_id}...`);
+
+    socketInstancia = await startLeadTalk({
+      usuario_id,
+      onQr: (qr) => {
+        console.log("[LeadTalk] 🔄 QR gerado na reativação.");
+        setQrCode(qr);
+      },
+    });
+  } catch (err) {
+    console.error("[LeadTalk] ⚠️ Erro ao reconectar sessão:", err.message);
+  }
+}
+
 app.listen(3001, () => {
   console.log("Servidor local do WhatsApp rodando na porta 3001.");
+  reconectarSessao(); // ✅ chamada correta
 });
