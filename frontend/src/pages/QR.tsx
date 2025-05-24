@@ -95,31 +95,38 @@ export default function QR() {
       await carregarQr(user.id, canvasRef.current || undefined);
       setEsperandoQr(false);
 
-      // ✅ 4. Escuta sessão ativada
+      // ✅ 4. Escuta sessão ativada via Realtime
       subscriptionRef.current = monitorarSessao(user.id);
 
-      // ✅ 5. Polling adicional para garantir QR em atraso
+      // ✅ 5. Polling adicional como fallback
       intervalRef.current = setInterval(async () => {
         tentativa++;
-        console.log(`⏱ Tentativa ${tentativa}/5`);
+        console.log(`⏱ Verificando sessão via polling (${tentativa}/5)...`);
 
-        const qrCheck = await fetch(
-          `${import.meta.env.VITE_API_URL}/qr?usuario_id=${user.id}`
-        );
-        const qrRes = await qrCheck.json();
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ usuario_id: user.id }),
+        });
 
-        if (qrRes?.qr) {
-          console.log("✅ QR encontrado no backend. Parando polling.");
-          await carregarQr(user.id, canvasRef.current || undefined);
-          setEsperandoQr(false);
+        const { ativo } = await res.json();
+
+        if (ativo === true) {
+          console.log(
+            "✅ Sessão ativa detectada via polling. Redirecionando..."
+          );
           clearInterval(intervalRef.current!);
+          navigate("/home");
         }
 
         if (tentativa >= 5) {
-          console.warn("❌ Tentativas esgotadas. Parando polling.");
+          console.warn("❌ Polling encerrado. Sessão não detectada.");
           clearInterval(intervalRef.current!);
         }
-      }, 10000); // tenta a cada 10 segundos
+      }, 5000);
     }
 
     verificarSessao();
