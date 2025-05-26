@@ -1,63 +1,75 @@
 // backend/api/enviar.js
 import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
+import { getUserIdFromRequest } from "../lib/auth.js";
 
 export default async function handler(req, res) {
-  if (applyCors(res, req)) return;
-
+  if (applyCors(req, res)) return;
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
 
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.replace("Bearer ", "");
-
-  if (!token) {
-    return res.status(401).json({ error: "Token ausente" });
+  const usuario_id = await getUserIdFromRequest(req);
+  if (!usuario_id) {
+    return res.status(401).json({ error: "Não autenticado" });
   }
 
-  const { data: userData, error: authError } = await supabase.auth.getUser(
-    token
-  );
-
-  if (authError || !userData?.user?.id) {
-    return res.status(401).json({ error: "Usuário inválido" });
-  }
-
-  const { numero, mensagem } = req.body;
+  const { numero, nome, mensagem } = req.body;
 
   if (!numero || !mensagem) {
-    return res.status(400).json({ error: "Parâmetros obrigatórios ausentes" });
+    return res
+      .status(400)
+      .json({ error: "Número e mensagem são obrigatórios" });
   }
 
-  // Buscar URL do whatsapp-core (ngrok ou fixo)
-  const { data, error } = await supabase
+  // 📨 1. Insere na fila do Supabase
+  const { error } = await supabase
+    .from("queue")
+    .insert([
+      { numero_destino: numero, nome, mensagem, enviado: false, usuario_id },
+    ]);
+
+  if (error) {
+    console.error("[LeadTalk] ❌ Erro ao inserir na fila:", error);
+    return res.status(500).json({ error: "Erro ao enfileirar mensagem" });
+  }
+
+  // 🌐 2. Recupera URL do backend local (ngrok ou IP fixo)
+  const { data: configData, error: configError } = await supabase
     .from("configuracoes")
     .select("valor")
     .eq("chave", "ngrok_url")
     .single();
 
-  if (error || !data?.valor) {
+  if (configError || !configData?.valor) {
     return res
       .status(500)
-      .json({ error: "URL do whatsapp-core não encontrada" });
+      .json({ error: "URL do backend local não encontrada" });
   }
 
-  const apiUrl = `${data.valor}/api/enviar`;
+  const apiUrl = `${configData.valor}/api/enviar`;
 
+  // 🔐 3. Repassa requisição ao backend local
   try {
     const response = await fetch(apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ numero, mensagem }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        usuario_id,
+        numero,
+        mensagem,
+        token: process.env.INTERNAL_API_KEY,
+      }),
     });
 
     const resultado = await response.json();
     return res.status(response.status).json(resultado);
   } catch (err) {
-    console.error("Erro ao enviar mensagem:", err);
+    console.error("Erro ao enviar mensagem ao backend local:", err);
     return res
       .status(500)
-      .json({ error: "Erro ao se comunicar com whatsapp-core" });
+      .json({ error: "Erro ao se comunicar com backend local" });
   }
 }

@@ -126,3 +126,11 @@ app.listen(3001, () => {
   console.log("Servidor local do WhatsApp rodando na porta 3001.");
   reconectarSessao(); // ✅ chamada correta
 });
+
+// exoporta a instancia do socket para uso em outros módulos (envio de mensagens)
+export function getSocketInstance() {
+  return socketInstancia;
+}
+
+// 🌀 Inicializa o processador da fila (enviar mensagens)
+import "./filaProcessor.js";
