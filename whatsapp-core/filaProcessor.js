@@ -1,7 +1,8 @@
 // whatsapp-core/filaProcessor.js
 import dotenv from "dotenv";
 import { supabase } from "./supabase.js";
-import { sender } from "./sender.js";
+import { enviarMensagens } from "./sender.js";
+import { getSocketInstance } from "./server.js";
 
 dotenv.config();
 
@@ -12,7 +13,7 @@ async function processarFila() {
     .from("queue")
     .select("*")
     .eq("enviado", false)
-    .order("data_envio", { ascending: true }) // envia em ordem
+    .order("data_envio", { ascending: true })
     .limit(5);
 
   if (error) {
@@ -26,8 +27,19 @@ async function processarFila() {
   }
 
   for (const item of data) {
+    const sock = getSocketInstance(item.usuario_id);
+    if (!sock) {
+      console.warn(`[Fila] ⚠️ Socket ausente para ${item.usuario_id}`);
+      continue;
+    }
+
     try {
-      await sender.enviarMensagem(item.numero_destino, item.mensagem);
+      await enviarMensagens(
+        sock,
+        [{ numero: item.numero_destino, nome: item.nome }],
+        item.mensagem,
+        8
+      );
 
       await supabase
         .from("queue")
@@ -42,9 +54,8 @@ async function processarFila() {
       );
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 8000)); // ⏱️ Delay seguro
+    await new Promise((resolve) => setTimeout(resolve, 8000));
   }
 }
 
-// ♻️ Executa a cada 30 segundos
 setInterval(processarFila, 30000);
