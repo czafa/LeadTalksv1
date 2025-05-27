@@ -1,10 +1,24 @@
 // backend/api/enviar.js
-import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { getUserIdFromRequest } from "../lib/auth.js";
 
 export default async function handler(req, res) {
-  if (applyCors(req, res)) return;
+  // 🌐 CORS Headers
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Origin", "https://leadtalks.vercel.app");
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,OPTIONS,PATCH,DELETE,POST,PUT"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "X-CSRF-Token, X-Requested-With, Authorization, Content-Type, Accept"
+  );
+
+  // ✅ Responde imediatamente preflight
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
