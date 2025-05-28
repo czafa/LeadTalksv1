@@ -3,8 +3,16 @@ import { supabase } from "../lib/supabase.js";
 import { getUserIdFromRequest } from "../lib/auth.js";
 
 export default async function handler(req, res) {
-  const allowedOrigins = ["https://leadtalksv1.vercel.app"];
+  const allowedOrigins = ["https://lead-talksv1.vercel.app"];
   const origin = req.headers.origin;
+
+  console.log(`[CORS DEBUG] Request Method: ${req.method}`);
+  console.log(`[CORS DEBUG] Request Origin Header: ${origin}`);
+  console.log(
+    `[CORS DEBUG] allowedOrigins includes origin? : ${allowedOrigins.includes(
+      origin
+    )}`
+  );
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
