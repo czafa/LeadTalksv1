@@ -1,10 +1,17 @@
-// lib/cors.js
 export function applyCors(res, req) {
-  res.setHeader("Access-Control-Allow-Credentials", true);
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "https://lead-talksv1.vercel.app"
-  );
+  const isDev = process.env.NODE_ENV !== "production";
+
+  const allowedOrigins = isDev
+    ? ["http://localhost:5173", "http://localhost:4173"]
+    : ["https://lead-talksv1.vercel.app"];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader(
     "Access-Control-Allow-Methods",
     "GET,OPTIONS,PATCH,DELETE,POST,PUT"
@@ -16,7 +23,8 @@ export function applyCors(res, req) {
 
   if (req.method === "OPTIONS") {
     res.status(200).end();
-    return true; // Preflight request handled
+    return true;
   }
-  return false; // Continue with handler logic
+
+  return false;
 }

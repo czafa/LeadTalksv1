@@ -51,16 +51,17 @@ export default function Login() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white px-4">
       <form
         onSubmit={handleSubmit}
-        className="bg-white p-6 rounded-lg shadow-md w-80"
+        className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm"
       >
-        <h2 className="text-2xl font-bold mb-4 text-center">LeadTalks</h2>
+        <h2 className="text-3xl font-bold mb-6 text-center">LeadTalks</h2>
+
         <input
           type="email"
           placeholder="Email"
-          className="w-full px-3 py-2 mb-3 border rounded"
+          className="w-full px-4 py-2 mb-3 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:ring focus:ring-green-400"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -68,7 +69,7 @@ export default function Login() {
         <input
           type="password"
           placeholder="Senha"
-          className="w-full px-3 py-2 mb-3 border rounded"
+          className="w-full px-4 py-2 mb-3 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:ring focus:ring-green-400"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -78,7 +79,7 @@ export default function Login() {
         )}
         <button
           type="submit"
-          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 mt-2 rounded"
         >
           Entrar
         </button>

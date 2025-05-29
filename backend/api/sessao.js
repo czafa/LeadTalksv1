@@ -2,6 +2,9 @@ import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
+  console.log("Origin recebida:", req.headers.origin);
+  console.log("Ambiente:", process.env.NODE_ENV);
+
   if (applyCors(res, req)) return; // Handle CORS preflight
 
   try {

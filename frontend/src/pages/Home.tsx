@@ -147,51 +147,59 @@ export default function Home() {
   const [filtroNome, setFiltroNome] = useState("");
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end mb-4">
-        <input
-          type="text"
-          placeholder="🔍 Pesquise um contato"
-          value={filtroNome}
-          onChange={(e) => setFiltroNome(e.target.value.toLowerCase())}
-          className="border border-gray-300 rounded p-2 w-full"
-        />
-        <textarea
-          placeholder="Mensagem personalizada (use {{nome}})"
-          rows={1}
-          value={mensagem}
-          onChange={(e) => setMensagem(e.target.value)}
-          className="border border-gray-300 rounded p-2 w-full resize-none"
-        />
-        <input
-          type="number"
-          placeholder="Intervalo (segundos)"
-          value={intervalo}
-          min={1}
-          onChange={(e) => setIntervalo(Number(e.target.value))}
-          className="border border-gray-300 rounded p-2 w-full"
-        />
+    <div className="flex flex-col h-screen bg-gray-900 text-white">
+      {/* 🔍 Filtros e mensagem */}
+      <div className="p-4 border-b border-gray-700 bg-gray-800">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+          <input
+            type="text"
+            placeholder="🔍 Pesquise um contato"
+            value={filtroNome}
+            onChange={(e) => setFiltroNome(e.target.value.toLowerCase())}
+            className="border border-gray-600 rounded p-2 w-full bg-gray-700 placeholder-gray-400"
+          />
+          <textarea
+            placeholder="Mensagem personalizada (use {{nome}})"
+            rows={1}
+            value={mensagem}
+            onChange={(e) => setMensagem(e.target.value)}
+            className="border border-gray-600 rounded p-2 w-full bg-gray-700 resize-none placeholder-gray-400"
+          />
+          <input
+            type="number"
+            placeholder="Intervalo (segundos)"
+            value={intervalo}
+            min={1}
+            onChange={(e) => setIntervalo(Number(e.target.value))}
+            className="border border-gray-600 rounded p-2 w-full bg-gray-700 placeholder-gray-400"
+          />
+          <button
+            onClick={handleEnviarMensagens}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded w-full"
+          >
+            📨 Enviar
+          </button>
+        </div>
+      </div>
+
+      {/* 📜 Logs */}
+      <div className="px-4 py-2 bg-gray-800 border-b border-gray-700">
+        <pre className="bg-gray-950 text-green-300 p-3 rounded max-h-40 overflow-y-auto whitespace-pre-wrap">
+          {logEnvio.join("\n") || "Nenhuma mensagem enviada ainda..."}
+        </pre>
         <button
-          onClick={handleEnviarMensagens}
-          className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded"
+          onClick={() => setLogEnvio([])}
+          className="mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-4 rounded"
         >
-          📨 Enviar
+          🧹 Limpar Log
         </button>
       </div>
 
-      <pre className="bg-white text-gray-800 p-4 rounded shadow max-h-64 overflow-y-auto whitespace-pre-wrap">
-        {logEnvio.join("\n")}
-      </pre>
-      <button
-        onClick={() => setLogEnvio([])}
-        className="ml-4 bg-red-100 hover:bg-red-200 text-red-800 font-bold py-2 px-4 rounded"
-      >
-        🧹 Limpar Log
-      </button>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">Contatos</h2>
+      {/* 📋 Painéis principais */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 🧑 Contatos */}
+        <div className="w-full md:w-1/2 border-r border-gray-700 overflow-y-auto p-4">
+          <h2 className="text-lg font-semibold mb-4">Contatos</h2>
           <ul className="space-y-2">
             {contatos
               .filter((contato) =>
@@ -200,9 +208,9 @@ export default function Home() {
               .map((contato) => (
                 <li
                   key={contato.id}
-                  className="flex items-center justify-between border p-2 rounded"
+                  className="flex items-center justify-between border border-gray-700 p-2 rounded hover:bg-gray-800"
                 >
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       value={contato.numero}
@@ -223,8 +231,9 @@ export default function Home() {
           </ul>
         </div>
 
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">Grupos</h2>
+        {/* 👥 Grupos */}
+        <div className="w-full md:w-1/2 overflow-y-auto p-4">
+          <h2 className="text-lg font-semibold mb-4">Grupos</h2>
           <ul className="space-y-4">
             {grupos.map((grupo) => {
               const membros = membrosPorGrupo[grupo.grupo_jid] || [];
@@ -234,27 +243,25 @@ export default function Home() {
               );
 
               return (
-                <li key={grupo.grupo_jid} className="border rounded p-2">
+                <li
+                  key={grupo.grupo_jid}
+                  className="border border-gray-700 rounded p-2"
+                >
                   <div className="flex justify-between items-center">
-                    {/* Checkbox para selecionar grupo */}
                     <input
                       type="checkbox"
                       checked={todosSelecionados}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => selecionarGrupo(membros)}
                     />
-
-                    {/* Nome do grupo */}
                     <span
                       className="flex-1 text-center font-bold cursor-pointer"
                       onClick={() => toggleGrupo(grupo.grupo_jid)}
                     >
                       {grupo.nome} ({grupo.tamanho} membros)
                     </span>
-
-                    {/* Ícone de expansão */}
                     <button
-                      className="text-gray-600 px-2"
+                      className="text-gray-400 px-2"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
