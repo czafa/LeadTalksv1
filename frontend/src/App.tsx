@@ -5,6 +5,7 @@ import Register from "./pages/Register";
 import Recover from "./pages/Recover";
 import QR from "./pages/QR";
 import ProtectedRoute from "./components/ProtectedRoute";
+import LayoutProtegido from "./components/LayoutProtegido";
 
 export default function App() {
   return (
@@ -16,14 +17,25 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/recover" element={<Recover />} />
-      <Route path="/qr" element={<QR />} />
 
-      {/* Rota protegida */}
+      {/* Rotas protegidas com limpeza de sessão automática */}
+      <Route
+        path="/qr"
+        element={
+          <ProtectedRoute>
+            <LayoutProtegido>
+              <QR />
+            </LayoutProtegido>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/home"
         element={
           <ProtectedRoute>
-            <Home />
+            <LayoutProtegido>
+              <Home />
+            </LayoutProtegido>
           </ProtectedRoute>
         }
       />
