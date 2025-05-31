@@ -1,7 +1,7 @@
-// backend/api/sessao.js
 import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
+
 export default async function handler(req, res) {
   console.log("Origin recebida:", req.headers.origin);
   console.log("Ambiente:", process.env.NODE_ENV);
@@ -9,15 +9,15 @@ export default async function handler(req, res) {
   if (applyCors(res, req)) return;
 
   try {
-    const validacao = await validarRequisicaoSessao(req);
-
-    if (!validacao.autorizado) {
-      return res.status(validacao.status).json({ erro: validacao.erro });
-    }
-
-    const { usuario_id, viaToken } = validacao;
-
+    // === POST: Atualiza a sessão no Supabase ===
     if (req.method === "POST") {
+      const validacao = await validarRequisicaoSessao(req);
+
+      if (!validacao.autorizado) {
+        return res.status(validacao.status).json({ erro: validacao.erro });
+      }
+
+      const { usuario_id } = validacao;
       const ativo = req.body?.ativo ?? true;
 
       const { error } = await supabase.from("sessao").upsert(
@@ -35,6 +35,29 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ atualizado: true });
+    }
+
+    // === GET: Verifica se a sessão está ativa ===
+    if (req.method === "GET") {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        return res.status(401).json({ erro: "Token ausente" });
+      }
+
+      const { data: userData, error: authError } = await supabase.auth.getUser(
+        token
+      );
+      if (authError || !userData?.user?.id) {
+        return res.status(401).json({ erro: "Usuário inválido" });
+      }
+
+      const { data: sessao } = await supabase
+        .from("sessao")
+        .select("ativo")
+        .eq("usuario_id", userData.user.id)
+        .single();
+
+      return res.status(200).json({ ativo: !!sessao?.ativo });
     }
 
     return res.status(405).json({ erro: "Método não permitido" });
