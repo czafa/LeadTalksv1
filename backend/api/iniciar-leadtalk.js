@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyCors } from "../lib/cors.js";
+import fs from "fs";
+import path from "path";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -7,7 +9,6 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  // Aplica CORS e trata requisições OPTIONS
   if (applyCors(res, req)) return;
 
   if (req.method !== "POST") {
@@ -24,7 +25,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Recupera a URL pública do ngrok armazenada no Supabase
     const { data: configData, error: configError } = await supabase
       .from("configuracoes")
       .select("valor")
@@ -37,7 +37,6 @@ export default async function handler(req, res) {
 
     const ngrokUrl = configData.valor;
 
-    // Valida o token e extrai o usuário logado
     const { data: userData, error: userError } = await supabase.auth.getUser(
       token
     );
@@ -48,7 +47,30 @@ export default async function handler(req, res) {
 
     const usuario_id = userData.user.id;
 
-    // Faz a chamada para o backend local via ngrok
+    // 📁 Verifica se a pasta do usuário existe localmente
+    const pastaUsuario = path.join("./auth", usuario_id);
+    const pastaExiste = fs.existsSync(pastaUsuario);
+
+    if (!pastaExiste) {
+      console.warn(
+        `[LeadTalk] ⚠️ Pasta local auth/${usuario_id} não existe. Marcando sessão como inativa.`
+      );
+
+      // Atualiza a sessão para inativa no Supabase
+      await supabase
+        .from("sessao")
+        .upsert(
+          { usuario_id, ativo: false, atualizado_em: new Date() },
+          { onConflict: ["usuario_id"] }
+        );
+
+      return res.status(202).json({
+        mensagem: "Sessão marcada como inativa pois pasta local não existe",
+        ativo: false,
+      });
+    }
+
+    // ▶️ Se pasta existe, aciona o backend local via ngrok normalmente
     const response = await fetch(`${ngrokUrl}/start`, {
       method: "POST",
       headers: {
@@ -58,13 +80,12 @@ export default async function handler(req, res) {
       body: JSON.stringify({ usuario_id }),
     });
 
-    // Tenta interpretar a resposta JSON do servidor local
     let result;
     try {
       result = await response.json();
     } catch (jsonError) {
       console.error(
-        "❌ Falha ao interpretar resposta do backend local:",
+        "❌ Erro ao interpretar resposta do backend local:",
         jsonError
       );
       return res

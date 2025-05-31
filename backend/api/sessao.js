@@ -13,6 +13,7 @@ export default async function handler(req, res) {
     // === POST: Atualiza o status da sessão ===
     if (req.method === "POST") {
       const validacao = await validarRequisicaoSessao(req);
+
       if (!validacao.autorizado) {
         return res.status(validacao.status).json({ erro: validacao.erro });
       }
@@ -47,6 +48,7 @@ export default async function handler(req, res) {
       const { data: userData, error: authError } = await supabase.auth.getUser(
         token
       );
+
       if (authError || !userData?.user?.id) {
         return res.status(401).json({ ativo: false, erro: "Usuário inválido" });
       }
@@ -66,7 +68,9 @@ export default async function handler(req, res) {
           .json({ ativo: false, erro: "Erro ao buscar sessão" });
       }
 
-      return res.status(200).json({ ativo: !!sessao?.ativo });
+      // Se não houver registro de sessão, considera como inativa
+      const sessaoAtiva = !!sessao?.ativo;
+      return res.status(200).json({ ativo: sessaoAtiva });
     }
 
     // === Outros métodos não são permitidos ===

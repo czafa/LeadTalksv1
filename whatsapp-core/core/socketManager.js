@@ -1,4 +1,3 @@
-// core/socketManager.js
 import { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import {
   makeWASocket,
@@ -22,11 +21,11 @@ import {
   exportarGruposESuasPessoas,
 } from "./exportadores.js";
 
-// === Diretório onde ficam os contatos salvos temporariamente ===
+// Diretório onde ficam os contatos salvos temporariamente
 const DATA_DIR = "./data";
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
-// === Memória local dos contatos e grupos ===
+// Memória local dos contatos e grupos
 const store = makeInMemoryStore({ logger: pino({ level: "silent" }) });
 store.readFromFile(`${DATA_DIR}/store.json`);
 setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
@@ -36,10 +35,25 @@ setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
  *
  * @param {string} usuario_id - ID do usuário autenticado no Supabase
  * @param {Function} [onQr] - Callback opcional para lidar com o QR Code
- * @returns {Promise<any>} - Retorna a instância do socket
+ * @returns {Promise<any>} - Retorna a instância do socket ou null se sessão inativa
  */
 export async function criarSocket(usuario_id, onQr) {
+  // 🚫 Bloqueia se a sessão estiver inativa
+  const { data: sessao } = await supabase
+    .from("sessao")
+    .select("ativo")
+    .eq("usuario_id", usuario_id)
+    .single();
+
+  if (!sessao?.ativo) {
+    console.warn(
+      `[LeadTalk] ❌ Sessão inativa para ${usuario_id}. Abortando criação do socket.`
+    );
+    return null;
+  }
+
   const pastaUsuario = path.join("./auth", usuario_id);
+
   if (!fs.existsSync(pastaUsuario)) {
     fs.mkdirSync(pastaUsuario, { recursive: true });
   }
@@ -61,7 +75,7 @@ export async function criarSocket(usuario_id, onQr) {
   store.bind(sock.ev);
   sock.ev.on("creds.update", saveCreds);
 
-  // 🔄 Contatos atualizados em tempo real (extra)
+  // Atualiza contatos locais
   sock.ev.on("contacts.update", async (updates) => {
     const contatosAtualizados = updates
       .filter((contato) => contato.id.endsWith("@s.whatsapp.net"))
@@ -98,7 +112,7 @@ export async function criarSocket(usuario_id, onQr) {
     );
   });
 
-  // === Escuta de eventos de conexão ===
+  // Gerencia eventos de conexão
   sock.ev.on(
     "connection.update",
     async ({ connection, qr, lastDisconnect }) => {
@@ -114,10 +128,8 @@ export async function criarSocket(usuario_id, onQr) {
         await supabase.from("qr").delete().eq("usuario_id", usuario_id);
         await marcarSessaoAtiva(usuario_id);
 
-        // 🆕 Espera sincronização antes de exportar
         const aguardarContatos = async (timeout = 20000) => {
           const start = Date.now();
-
           while (
             Object.keys(store.contacts).length === 0 &&
             Date.now() - start < timeout
@@ -127,7 +139,6 @@ export async function criarSocket(usuario_id, onQr) {
           }
 
           const sucesso = Object.keys(store.contacts).length > 0;
-
           if (sucesso) {
             console.log("[LeadTalk] ✅ Contatos carregados com sucesso.");
           } else {
@@ -148,7 +159,21 @@ export async function criarSocket(usuario_id, onQr) {
 
         if (deveReconectar) {
           console.log("🔄 Conexão perdida. Tentando reconectar...");
-          setTimeout(() => criarSocket(usuario_id, onQr), 5000);
+
+          // ✅ Verifica se a sessão ainda está ativa antes de tentar reconectar
+          const { data: sessaoReconectar } = await supabase
+            .from("sessao")
+            .select("ativo")
+            .eq("usuario_id", usuario_id)
+            .single();
+
+          if (sessaoReconectar?.ativo) {
+            setTimeout(() => criarSocket(usuario_id, onQr), 5000);
+          } else {
+            console.warn(
+              "🛑 Sessão desativada durante desconexão. Não reconectar."
+            );
+          }
         } else {
           await marcarSessaoInativa(usuario_id);
           console.log("🔒 Sessão encerrada e marcada como inativa.");

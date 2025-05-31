@@ -82,7 +82,12 @@ export default function QR() {
       });
 
       const result = await response.json();
-      if (result?.ativo === true) return navigate("/home");
+
+      if (result?.ativo === true) {
+        console.log(
+          "[LeadTalk] ⚠️ Sessão marcada como ativa, mas aguardando confirmação..."
+        );
+      }
 
       // ✅ 1. Inicia sessão no backend imediatamente
       await iniciarSessao(user.id, token);
@@ -104,12 +109,9 @@ export default function QR() {
         console.log(`⏱ Verificando sessão via polling (${tentativa}/5)...`);
 
         const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-          method: "POST",
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ usuario_id: user.id }),
         });
 
         const { ativo } = await res.json();
