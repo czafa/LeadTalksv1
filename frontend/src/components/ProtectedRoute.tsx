@@ -1,17 +1,49 @@
-import { Navigate } from "react-router-dom";
-import { useEffect, useState, ReactNode } from "react"; // <-- ReactNode aqui
+// src/components/ProtectedRoute.tsx
+import { Navigate, useLocation } from "react-router-dom";
+import { useEffect, useState, ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 
-export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const [autenticado, setAutenticado] = useState<boolean | null>(null);
+type Props = {
+  children: ReactNode;
+};
+
+export default function ProtectedRoute({ children }: Props) {
+  const [autorizado, setAutorizado] = useState<boolean | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAutenticado(!!user);
-    });
-  }, []);
+    const verificar = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const session = await supabase.auth.getSession();
 
-  if (autenticado === null) return null; // pode adicionar um <Spinner/> aqui
+      const user = userData.user;
+      const token = session.data.session?.access_token;
 
-  return autenticado ? <>{children}</> : <Navigate to="/login" />;
+      if (!user || !token) return setAutorizado(false);
+
+      // ✅ Se rota for /qr, só exige login
+      if (location.pathname === "/qr") {
+        return setAutorizado(true);
+      }
+
+      // ✅ Se for /home, exige login + sessao ativa
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ usuario_id: user.id }),
+      });
+
+      const result = await res.json();
+      setAutorizado(result.ativo === true);
+    };
+
+    verificar();
+  }, [location.pathname]);
+
+  if (autorizado === null) return null;
+
+  return autorizado ? <>{children}</> : <Navigate to="/qr" />;
 }

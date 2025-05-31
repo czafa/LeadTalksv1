@@ -1,3 +1,4 @@
+// backend/api/sessao.js
 import { applyCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
@@ -9,10 +10,9 @@ export default async function handler(req, res) {
   if (applyCors(res, req)) return;
 
   try {
-    // === POST: Atualiza a sessão no Supabase ===
+    // === POST: Atualiza o status da sessão ===
     if (req.method === "POST") {
       const validacao = await validarRequisicaoSessao(req);
-
       if (!validacao.autorizado) {
         return res.status(validacao.status).json({ erro: validacao.erro });
       }
@@ -41,25 +41,35 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const token = req.headers.authorization?.replace("Bearer ", "");
       if (!token) {
-        return res.status(401).json({ erro: "Token ausente" });
+        return res.status(401).json({ ativo: false, erro: "Token ausente" });
       }
 
       const { data: userData, error: authError } = await supabase.auth.getUser(
         token
       );
       if (authError || !userData?.user?.id) {
-        return res.status(401).json({ erro: "Usuário inválido" });
+        return res.status(401).json({ ativo: false, erro: "Usuário inválido" });
       }
 
-      const { data: sessao } = await supabase
+      const usuario_id = userData.user.id;
+
+      const { data: sessao, error: erroSessao } = await supabase
         .from("sessao")
         .select("ativo")
-        .eq("usuario_id", userData.user.id)
+        .eq("usuario_id", usuario_id)
         .single();
+
+      if (erroSessao) {
+        console.error("Erro ao buscar sessão:", erroSessao.message);
+        return res
+          .status(500)
+          .json({ ativo: false, erro: "Erro ao buscar sessão" });
+      }
 
       return res.status(200).json({ ativo: !!sessao?.ativo });
     }
 
+    // === Outros métodos não são permitidos ===
     return res.status(405).json({ erro: "Método não permitido" });
   } catch (err) {
     console.error("Erro em /api/sessao:", err);

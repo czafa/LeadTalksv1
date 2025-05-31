@@ -40,32 +40,6 @@ setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
  */
 export async function criarSocket(usuario_id, onQr) {
   const pastaUsuario = path.join("./auth", usuario_id);
-
-  // 🛡️ Verifica se a sessão está inativa no Supabase
-  const { data: sessao, error: erroSessao } = await supabase
-    .from("sessao")
-    .select("ativo")
-    .eq("usuario_id", usuario_id)
-    .single();
-
-  if (erroSessao) {
-    console.warn(
-      `[LeadTalk] ⚠️ Erro ao verificar sessão no Supabase: ${erroSessao.message}`
-    );
-  }
-
-  if (sessao?.ativo === false) {
-    console.log(
-      `[LeadTalk] 🚫 Sessão inativa no Supabase para ${usuario_id}. Forçando novo QR...`
-    );
-
-    if (fs.existsSync(pastaUsuario)) {
-      fs.rmSync(pastaUsuario, { recursive: true, force: true });
-      console.log(`[LeadTalk] 🧹 Pasta de sessão removida: ${pastaUsuario}`);
-    }
-  }
-
-  // Garante que a pasta existe após possível remoção
   if (!fs.existsSync(pastaUsuario)) {
     fs.mkdirSync(pastaUsuario, { recursive: true });
   }
@@ -87,6 +61,7 @@ export async function criarSocket(usuario_id, onQr) {
   store.bind(sock.ev);
   sock.ev.on("creds.update", saveCreds);
 
+  // 🔄 Contatos atualizados em tempo real (extra)
   sock.ev.on("contacts.update", async (updates) => {
     const contatosAtualizados = updates
       .filter((contato) => contato.id.endsWith("@s.whatsapp.net"))
@@ -123,6 +98,7 @@ export async function criarSocket(usuario_id, onQr) {
     );
   });
 
+  // === Escuta de eventos de conexão ===
   sock.ev.on(
     "connection.update",
     async ({ connection, qr, lastDisconnect }) => {
@@ -138,6 +114,7 @@ export async function criarSocket(usuario_id, onQr) {
         await supabase.from("qr").delete().eq("usuario_id", usuario_id);
         await marcarSessaoAtiva(usuario_id);
 
+        // 🆕 Espera sincronização antes de exportar
         const aguardarContatos = async (timeout = 20000) => {
           const start = Date.now();
 
