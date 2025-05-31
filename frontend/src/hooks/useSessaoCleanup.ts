@@ -1,60 +1,45 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useSupabaseClient } from "@supabase/auth-helpers-react";
 
 export function useSessaoCleanup() {
   const supabase = useSupabaseClient();
+  const usuarioIdRef = useRef<string | null>(null);
 
+  // Captura e armazena o usuario_id apenas uma vez
   useEffect(() => {
-    const enviarFechamentoSessao = async () => {
-      try {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
-        const user = await supabase.auth.getUser();
-        const usuario_id = user.data.user?.id;
-
-        if (!usuario_id || !token) {
-          console.warn("🚫 Sem token ou usuário para finalizar sessão.");
-          return;
-        }
-
-        const body = JSON.stringify({ usuario_id, ativo: false });
-        const url = `${import.meta.env.VITE_API_URL}/sessao`;
-
-        console.log("💥 Enviando encerramento de sessão...", { usuario_id });
-
-        if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: "application/json" });
-          const success = navigator.sendBeacon(url, blob);
-          console.log("📡 sendBeacon enviado:", success);
-        } else {
-          await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body,
-          });
-          console.log("📬 fetch enviado (fallback)");
-        }
-      } catch (error) {
-        console.error("❌ Erro ao encerrar sessão:", error);
-      }
+    const setup = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      usuarioIdRef.current = userData.user?.id ?? null;
     };
 
-    const handleUnload = () => enviarFechamentoSessao();
-    const handleVisibilityChange = () => {
+    setup();
+  }, [supabase]);
+
+  useEffect(() => {
+    const enviarFechamentoSessao = () => {
+      if (!usuarioIdRef.current) return;
+
+      const body = JSON.stringify({
+        usuario_id: usuarioIdRef.current,
+        ativo: false,
+        sem_token: true, // 👈 se quiser tratar no backend
+      });
+
+      const url = `${import.meta.env.VITE_API_URL}/sessao`;
+
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(url, blob);
+    };
+
+    window.addEventListener("beforeunload", enviarFechamentoSessao);
+    document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         enviarFechamentoSessao();
       }
-    };
-
-    window.addEventListener("beforeunload", handleUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    });
 
     return () => {
-      window.removeEventListener("beforeunload", handleUnload);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", enviarFechamentoSessao);
     };
-  }, [supabase]);
+  }, []);
 }
