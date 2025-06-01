@@ -1,3 +1,4 @@
+//GitHub/LeadTalksv1/frontend/src/pages/QR.tsx
 import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +34,7 @@ export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
+  const jaRedirecionouRef = useRef(false);
   const navigate = useNavigate();
 
   const { carregarQr, statusMsg } = useQr();
@@ -40,6 +42,7 @@ export default function QR() {
 
   const monitorarSessao = useCallback(
     (usuarioId: string) => {
+      console.log("🔔 Escutando mudanças na tabela 'sessao'...");
       return supabase
         .channel("sessao-status")
         .on(
@@ -53,8 +56,9 @@ export default function QR() {
           (payload) => {
             const ativo =
               payload?.new?.ativo === true || payload?.new?.ativo === "true";
-            if (ativo) {
-              console.log("✅ Sessão ativada. Redirecionando...");
+            if (ativo && !jaRedirecionouRef.current) {
+              console.log("✅ Sessão ativada via Realtime. Redirecionando...");
+              jaRedirecionouRef.current = true;
               if (intervalRef.current) clearInterval(intervalRef.current);
               navigate("/home");
             }
@@ -84,7 +88,7 @@ export default function QR() {
       const result = await response.json();
 
       if (result?.ativo === true) {
-        console.log(
+        console.warn(
           "[LeadTalk] ⚠️ Sessão marcada como ativa, mas aguardando confirmação..."
         );
       }
@@ -116,10 +120,11 @@ export default function QR() {
 
         const { ativo } = await res.json();
 
-        if (ativo === true) {
+        if (ativo === true && !jaRedirecionouRef.current) {
           console.log(
             "✅ Sessão ativa detectada via polling. Redirecionando..."
           );
+          jaRedirecionouRef.current = true;
           clearInterval(intervalRef.current!);
           navigate("/home");
         }
