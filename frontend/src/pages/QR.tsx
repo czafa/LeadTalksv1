@@ -1,12 +1,11 @@
-//GitHub/LeadTalksv1/frontend/src/pages/QR.tsx
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useQr } from "../hooks/userQr";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
-// ✅ Função auxiliar para iniciar a sessão no backend
-async function iniciarSessao(usuario_id: string, token: string) {
+// 🔐 Inicia sessão no backend
+async function iniciarSessaoBackend(usuario_id: string, token: string) {
   try {
     const res = await fetch(
       `${import.meta.env.VITE_API_URL}/iniciar-leadtalk`,
@@ -20,16 +19,87 @@ async function iniciarSessao(usuario_id: string, token: string) {
       }
     );
 
-    if (!res.ok) {
-      console.error("[LeadTalk] ❌ Falha ao iniciar sessão no backend.");
-    } else {
+    if (res.ok) {
       console.log("[LeadTalk] 🚀 Sessão iniciada no backend.");
+    } else {
+      console.error("[LeadTalk] ❌ Falha ao iniciar sessão no backend.");
     }
   } catch (err) {
-    console.error("[LeadTalk] ❌ Erro ao requisitar backend:", err);
+    console.error("[LeadTalk] ❌ Erro de rede ao iniciar sessão:", err);
   }
 }
 
+// 🔄 Polling como fallback
+async function verificarAtivoViaPolling(
+  token: string,
+  jaRedirecionouRef: React.MutableRefObject<boolean>,
+  navigate: ReturnType<typeof useNavigate>,
+  intervalRef: React.MutableRefObject<NodeJS.Timeout | null>
+) {
+  let tentativa = 0;
+
+  intervalRef.current = setInterval(async () => {
+    tentativa++;
+    console.log(`⏱ Verificando sessão via polling (${tentativa}/5)...`);
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const { ativo } = await res.json();
+
+      if (ativo && !jaRedirecionouRef.current) {
+        console.log("✅ Sessão ativa via polling. Redirecionando...");
+        jaRedirecionouRef.current = true;
+        clearInterval(intervalRef.current!);
+        navigate("/home");
+      }
+
+      if (tentativa >= 5) {
+        console.warn("❌ Polling encerrado. Sessão não detectada.");
+        clearInterval(intervalRef.current!);
+      }
+    } catch (err) {
+      console.error("❌ Erro ao consultar sessão via polling:", err);
+      clearInterval(intervalRef.current!);
+    }
+  }, 5000);
+}
+
+// 📡 Realtime Supabase listener
+function monitorarSessaoRealtime(
+  usuario_id: string,
+  jaRedirecionouRef: React.MutableRefObject<boolean>,
+  intervalRef: React.MutableRefObject<NodeJS.Timeout | null>,
+  navigate: ReturnType<typeof useNavigate>
+): RealtimeChannel {
+  console.log("📡 Escutando atualizações da tabela 'sessao'...");
+
+  return supabase
+    .channel("sessao-status")
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "sessao",
+        filter: `usuario_id=eq.${usuario_id}`,
+      },
+      (payload) => {
+        const ativo = payload?.new?.ativo === true;
+        if (ativo && !jaRedirecionouRef.current) {
+          console.log("✅ Sessão ativada via Realtime. Redirecionando...");
+          jaRedirecionouRef.current = true;
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          navigate("/home");
+        }
+      }
+    )
+    .subscribe();
+}
+
+// 📱 Componente QR
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,39 +110,8 @@ export default function QR() {
   const { carregarQr, statusMsg } = useQr();
   const [esperandoQr, setEsperandoQr] = useState(true);
 
-  const monitorarSessao = useCallback(
-    (usuarioId: string) => {
-      console.log("🔔 Escutando mudanças na tabela 'sessao'...");
-      return supabase
-        .channel("sessao-status")
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "sessao",
-            filter: `usuario_id=eq.${usuarioId}`,
-          },
-          (payload) => {
-            const ativo =
-              payload?.new?.ativo === true || payload?.new?.ativo === "true";
-            if (ativo && !jaRedirecionouRef.current) {
-              console.log("✅ Sessão ativada via Realtime. Redirecionando...");
-              jaRedirecionouRef.current = true;
-              if (intervalRef.current) clearInterval(intervalRef.current);
-              navigate("/home");
-            }
-          }
-        )
-        .subscribe();
-    },
-    [navigate]
-  );
-
   useEffect(() => {
-    let tentativa = 0;
-
-    async function verificarSessao() {
+    async function iniciarProcesso() {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       if (!user) return navigate("/login");
@@ -81,69 +120,60 @@ export default function QR() {
       const token = session.data.session?.access_token;
       if (!token) return navigate("/login");
 
-      const response = await fetch(import.meta.env.VITE_API_URL + "/sessao", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // 1. Verifica se já está ativo
+      try {
+        const status = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await status.json();
 
-      const result = await response.json();
-
-      if (result?.ativo === true) {
-        console.warn(
-          "[LeadTalk] ⚠️ Sessão marcada como ativa, mas aguardando confirmação..."
-        );
+        if (json?.ativo === true) {
+          console.warn("[LeadTalk] ⚠️ Sessão já está ativa no Supabase.");
+        }
+      } catch (err) {
+        console.error("❌ Erro ao consultar status da sessão:", err);
       }
 
-      // ✅ 1. Inicia sessão no backend imediatamente
-      await iniciarSessao(user.id, token);
-      setEsperandoQr(true); // inicia loading visual
+      // 2. Inicia sessão
+      await iniciarSessaoBackend(user.id, token);
+      setEsperandoQr(true);
 
-      // ✅ 2. Aguarda backend salvar QR no Supabase
+      // 3. Espera geração do QR no Supabase
       await new Promise((resolve) => setTimeout(resolve, 5000));
 
-      // ✅ 3. Carrega QR do Supabase
+      // 4. Renderiza o QR
+      console.log("🖼️ Canvas recebido:", canvasRef.current);
       await carregarQr(user.id, canvasRef.current || undefined);
+      console.log("✅ QR renderizado no canvas com sucesso.");
       setEsperandoQr(false);
 
-      // ✅ 4. Escuta sessão ativada via Realtime
-      subscriptionRef.current = monitorarSessao(user.id);
+      // 5. Escuta realtime
+      subscriptionRef.current = monitorarSessaoRealtime(
+        user.id,
+        jaRedirecionouRef,
+        intervalRef,
+        navigate
+      );
 
-      // ✅ 5. Polling adicional como fallback
-      intervalRef.current = setInterval(async () => {
-        tentativa++;
-        console.log(`⏱ Verificando sessão via polling (${tentativa}/5)...`);
-
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const { ativo } = await res.json();
-
-        if (ativo === true && !jaRedirecionouRef.current) {
-          console.log(
-            "✅ Sessão ativa detectada via polling. Redirecionando..."
-          );
-          jaRedirecionouRef.current = true;
-          clearInterval(intervalRef.current!);
-          navigate("/home");
-        }
-
-        if (tentativa >= 5) {
-          console.warn("❌ Polling encerrado. Sessão não detectada.");
-          clearInterval(intervalRef.current!);
-        }
-      }, 5000);
+      // 6. Polling como fallback
+      await verificarAtivoViaPolling(
+        token,
+        jaRedirecionouRef,
+        navigate,
+        intervalRef
+      );
     }
 
-    verificarSessao();
+    iniciarProcesso();
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (subscriptionRef.current)
-        supabase.removeChannel(subscriptionRef.current);
+      const intervalId = intervalRef.current;
+      const subscription = subscriptionRef.current;
+
+      if (intervalId) clearInterval(intervalId);
+      if (subscription) supabase.removeChannel(subscription);
     };
-  }, [navigate, carregarQr, monitorarSessao]);
+  }, [navigate, carregarQr]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">

@@ -1,29 +1,33 @@
+//GitHub/LeadTalksv1/backend/api/qr.js
+
 import { applyCors } from "../lib/cors.js";
 import fetch from "node-fetch";
 import { supabase } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
-  console.log("📦 Requisição recebida em /api/qr");
+  console.log("📦 [API /qr] Requisição recebida");
+
   if (applyCors(res, req)) return;
 
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
 
-  // 🕵️ Logger estratégico para monitorar origem e frequência
+  // 🕵️ Log de rastreamento de origem
   const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
   const userAgent = req.headers["user-agent"];
   const now = new Date().toISOString();
 
   console.log(
-    `[QR Monitor] 📥 ${now} - usuario_id=${usuario_id} - IP=${ip} - Agent=${userAgent}`
+    `[QR Monitor] ${now} | usuario_id=${usuario_id} | IP=${ip} | UA=${userAgent}`
   );
 
   if (!usuario_id) {
+    console.warn("[API /qr] ❌ Falta o parâmetro usuario_id");
     return res.status(400).json({ error: "usuario_id é obrigatório" });
   }
 
   try {
-    // 1️⃣ Verifica se já há QR code recente
-    const { data: qrAtivo } = await supabase
+    // 1️⃣ Verifica QR válido nos últimos 30s
+    const { data: qrAtivo, error: erroQr } = await supabase
       .from("qr")
       .select("qr, criado_em")
       .eq("usuario_id", usuario_id)
@@ -31,34 +35,54 @@ export default async function handler(req, res) {
       .limit(1)
       .maybeSingle();
 
-    const qrAindaValido =
-      qrAtivo && new Date(qrAtivo.criado_em).getTime() > Date.now() - 30000; // 30 segundos
+    const criadoEmMs = qrAtivo?.criado_em
+      ? new Date(qrAtivo.criado_em).getTime()
+      : 0;
+    const agoraMs = Date.now();
+    const qrAindaValido = criadoEmMs > agoraMs - 30000;
 
+    console.log(
+      `[API /qr] 🔍 QR atual: ${
+        qrAindaValido ? "válido" : "inválido ou ausente"
+      } | criado_em=${qrAtivo?.criado_em || "nenhum"}`
+    );
+
+    // 2️⃣ Se não for válido, aciona /start no backend local
     if (!qrAindaValido) {
-      // 2️⃣ Inicia nova sessão apenas se necessário
-      const { data, error } = await supabase
+      const { data: config, error: erroConfig } = await supabase
         .from("configuracoes")
         .select("valor")
         .eq("chave", "ngrok_url")
         .single();
 
-      if (error || !data?.valor) {
+      if (erroConfig || !config?.valor) {
+        console.error(
+          "[API /qr] ❌ Erro ao obter URL do backend local:",
+          erroConfig
+        );
         return res
           .status(500)
           .json({ error: "URL do whatsapp-core não encontrada" });
       }
 
-      const apiUrl = data.valor;
+      const apiUrl = config.valor;
+      console.log(`[API /qr] 🔄 Requisitando novo QR via ${apiUrl}/start`);
 
-      await fetch(`${apiUrl}/start`, {
+      const resposta = await fetch(`${apiUrl}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario_id }),
       });
+
+      if (!resposta.ok) {
+        console.warn(
+          `[API /qr] ⚠️ Falha ao chamar /start: HTTP ${resposta.status}`
+        );
+      }
     }
 
-    // 3️⃣ Busca QR atualizado após aguardar um pouco (opcional)
-    const { data: qrFinal } = await supabase
+    // 3️⃣ Rebusca QR do Supabase (mesmo que o anterior)
+    const { data: qrFinal, error: erroQrFinal } = await supabase
       .from("qr")
       .select("qr")
       .eq("usuario_id", usuario_id)
@@ -66,9 +90,16 @@ export default async function handler(req, res) {
       .limit(1)
       .maybeSingle();
 
+    if (erroQrFinal) {
+      console.error("[API /qr] ❌ Erro ao buscar QR final:", erroQrFinal);
+      return res.status(500).json({ error: "Erro ao buscar QR code" });
+    }
+
     return res.status(200).json(qrFinal || { qr: null });
   } catch (e) {
-    console.error("❌ Erro no handler /api/qr:", e);
-    return res.status(500).json({ error: "Erro ao buscar QR code" });
+    console.error("❌ [API /qr] Erro inesperado:", e);
+    return res
+      .status(500)
+      .json({ error: "Erro ao processar requisição de QR" });
   }
 }
