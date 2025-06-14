@@ -47,9 +47,14 @@ export async function criarSocket(usuario_id, onQr) {
     .eq("usuario_id", usuario_id)
     .single();
 
-  if (!sessao?.ativo) {
+  console.log(
+    `[DEBUG] Resultado de supabase para sessao do ${usuario_id}:`,
+    sessao
+  );
+
+  if (sessao?.ativo === true) {
     console.warn(
-      `[LeadTalk] ❌ Sessão inativa para ${usuario_id}. Abortando criação do socket.`
+      `[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}. Não é necessário criar novo socket.`
     );
     return null;
   }

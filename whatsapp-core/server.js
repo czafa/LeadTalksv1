@@ -80,6 +80,13 @@ app.post("/start", async (req, res) => {
 
     console.log(`[LeadTalk] Iniciando sessão para o usuário: ${usuario_id}`);
 
+    await supabase
+      .from("sessao")
+      .upsert(
+        { usuario_id, ativo: false, atualizado_em: new Date().toISOString() },
+        { onConflict: "usuario_id" }
+      );
+
     socketInstancia = await startLeadTalk({
       usuario_id,
       onQr: (qr) => {
@@ -94,8 +101,6 @@ app.post("/start", async (req, res) => {
     res.status(500).json({ error: "Falha ao iniciar sessão" });
   }
 });
-
-// server.js (trecho final corrigido)
 
 async function reconectarSessao() {
   try {

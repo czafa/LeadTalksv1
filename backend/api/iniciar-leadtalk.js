@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const { error } = await supabase.from("sessao").upsert(
     {
       usuario_id,
-      ativo: true,
+      ativo: false,
       atualizado_em: new Date(),
     },
     { onConflict: ["usuario_id"] }
