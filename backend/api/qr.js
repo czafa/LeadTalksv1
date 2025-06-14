@@ -7,7 +7,11 @@ import { supabase } from "../lib/supabase.js";
 export default async function handler(req, res) {
   console.log("📦 [API /qr] Requisição recebida");
 
-  if (applyCors(res, req)) return;
+  if (req.method === "OPTIONS") {
+    applyCors(res, req);
+    return;
+  }
+  applyCors(res, req); // Continua execução normalmente
 
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
 
