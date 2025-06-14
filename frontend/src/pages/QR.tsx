@@ -33,6 +33,7 @@ async function iniciarSessaoBackend(usuario_id: string, token: string) {
 async function verificarAtivoViaPolling(
   token: string,
   jaRedirecionouRef: React.MutableRefObject<boolean>,
+  qrRenderizadoRef: React.MutableRefObject<boolean>,
   navigate: ReturnType<typeof useNavigate>,
   intervalRef: React.MutableRefObject<NodeJS.Timeout | null>
 ) {
@@ -49,8 +50,10 @@ async function verificarAtivoViaPolling(
 
       const { ativo } = await res.json();
 
-      if (ativo && !jaRedirecionouRef.current) {
-        console.log("✅ Sessão ativa via polling. Redirecionando...");
+      if (ativo && qrRenderizadoRef.current && !jaRedirecionouRef.current) {
+        console.log(
+          "✅ Sessão ativa e QR renderizado. Redirecionando via polling..."
+        );
         jaRedirecionouRef.current = true;
         clearInterval(intervalRef.current!);
         navigate("/home");
@@ -71,6 +74,7 @@ async function verificarAtivoViaPolling(
 function monitorarSessaoRealtime(
   usuario_id: string,
   jaRedirecionouRef: React.MutableRefObject<boolean>,
+  qrRenderizadoRef: React.MutableRefObject<boolean>,
   intervalRef: React.MutableRefObject<NodeJS.Timeout | null>,
   navigate: ReturnType<typeof useNavigate>
 ): RealtimeChannel {
@@ -88,8 +92,10 @@ function monitorarSessaoRealtime(
       },
       (payload) => {
         const ativo = payload?.new?.ativo === true;
-        if (ativo && !jaRedirecionouRef.current) {
-          console.log("✅ Sessão ativada via Realtime. Redirecionando...");
+        if (ativo && qrRenderizadoRef.current && !jaRedirecionouRef.current) {
+          console.log(
+            "✅ Sessão ativa e QR renderizado. Redirecionando via Realtime..."
+          );
           jaRedirecionouRef.current = true;
           if (intervalRef.current) clearInterval(intervalRef.current);
           navigate("/home");
@@ -105,6 +111,7 @@ export default function QR() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
   const jaRedirecionouRef = useRef(false);
+  const qrRenderizadoRef = useRef(false);
   const navigate = useNavigate();
 
   const { carregarQr, statusMsg } = useQr();
@@ -145,12 +152,14 @@ export default function QR() {
       console.log("🖼️ Canvas recebido:", canvasRef.current);
       await carregarQr(user.id, canvasRef.current || undefined);
       console.log("✅ QR renderizado no canvas com sucesso.");
+      qrRenderizadoRef.current = true;
       setEsperandoQr(false);
 
       // 5. Escuta realtime
       subscriptionRef.current = monitorarSessaoRealtime(
         user.id,
         jaRedirecionouRef,
+        qrRenderizadoRef,
         intervalRef,
         navigate
       );
@@ -159,6 +168,7 @@ export default function QR() {
       await verificarAtivoViaPolling(
         token,
         jaRedirecionouRef,
+        qrRenderizadoRef,
         navigate,
         intervalRef
       );

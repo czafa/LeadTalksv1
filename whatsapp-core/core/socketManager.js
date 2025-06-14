@@ -1,3 +1,5 @@
+//GitHub/LeadTalksv1/whatsapp-core/core/socketManager.js
+
 import { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import {
   makeWASocket,
@@ -123,10 +125,11 @@ export async function criarSocket(usuario_id, onQr) {
       }
 
       if (connection === "open") {
-        console.log("[LeadTalk] ✅ Conectado com sucesso!");
+        console.log(
+          "[LeadTalk] ✅ Conexão aberta. Aguardando carregamento completo..."
+        );
 
         await supabase.from("qr").delete().eq("usuario_id", usuario_id);
-        await marcarSessaoAtiva(usuario_id);
 
         const aguardarContatos = async (timeout = 20000) => {
           const start = Date.now();
@@ -148,9 +151,17 @@ export async function criarSocket(usuario_id, onQr) {
           return sucesso;
         };
 
-        await aguardarContatos();
-        await exportarContatos(store, usuario_id);
-        await exportarGruposESuasPessoas(sock, store, usuario_id);
+        const contatosOk = await aguardarContatos();
+
+        if (contatosOk) {
+          await exportarContatos(store, usuario_id);
+          await exportarGruposESuasPessoas(sock, store, usuario_id);
+          await marcarSessaoAtiva(usuario_id); // ✅ Somente após sucesso real
+        } else {
+          console.warn(
+            "[LeadTalk] ❌ Contatos não carregados. Sessão não será marcada como ativa."
+          );
+        }
       }
 
       if (connection === "close") {
