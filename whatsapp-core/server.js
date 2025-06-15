@@ -24,13 +24,33 @@ console.log("🔧 Iniciando server.js...");
 
 // Endpoint para retornar o último QR code diretamente da memória
 app.get("/api/qr", async (req, res) => {
-  const ultimoQrCode = getQrCode(); // ✅ Obtem da memória
-  console.log("🔍 GET /api/qr chamado. QR atual:", ultimoQrCode);
+  const { usuario_id } = req.query;
 
-  if (ultimoQrCode) {
-    return res.status(200).json({ qr: ultimoQrCode });
-  } else {
-    return res.status(404).json({ error: "QR code ainda não gerado" });
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("qr")
+      .select("qr")
+      .eq("usuario_id", usuario_id)
+      .order("criado_em", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data?.qr) {
+      console.warn(
+        `[API /qr] ❌ QR não encontrado no Supabase para ${usuario_id}`
+      );
+      return res.status(404).json({ error: "QR não encontrado" });
+    }
+
+    console.log(`[API /qr] ✅ QR recuperado para ${usuario_id}`);
+    return res.status(200).json({ qr: data.qr });
+  } catch (err) {
+    console.error("Erro ao buscar QR no Supabase:", err.message);
+    return res.status(500).json({ error: "Erro interno ao buscar QR" });
   }
 });
 

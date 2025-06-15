@@ -114,7 +114,7 @@ export default function QR() {
   const qrRenderizadoRef = useRef(false);
   const navigate = useNavigate();
 
-  const { carregarQr, statusMsg } = useQr();
+  const { carregarQr, esperarQrCode, statusMsg } = useQr();
   const [esperandoQr, setEsperandoQr] = useState(true);
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function QR() {
 
       // 4. Renderiza o QR
       console.log("🖼️ Canvas recebido:", canvasRef.current);
-      await carregarQr(user.id, canvasRef.current || undefined);
+      await esperarQrCode(user.id, canvasRef.current || undefined);
       console.log("✅ QR renderizado no canvas com sucesso.");
       qrRenderizadoRef.current = true;
       setEsperandoQr(false);

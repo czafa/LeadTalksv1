@@ -52,9 +52,13 @@ export async function criarSocket(usuario_id, onQr) {
     sessao
   );
 
-  if (sessao?.ativo === true) {
+  const pasta = path.join("./auth", usuario_id);
+  const arquivos = fs.existsSync(pasta) ? fs.readdirSync(pasta) : [];
+
+  if (sessao?.ativo === true && arquivos.length > 0) {
     console.warn(
-      `[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}. Não é necessário criar novo socket.`
+      `[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}. Ignorando novo socket. Arquivos:`,
+      arquivos
     );
     return null;
   }
@@ -67,6 +71,13 @@ export async function criarSocket(usuario_id, onQr) {
 
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState(pastaUsuario);
+
+  console.log(
+    "[DEBUG] 🧩 Criando socket com versão:",
+    version,
+    "usuário:",
+    usuario_id
+  );
 
   const sock = makeWASocket({
     version,

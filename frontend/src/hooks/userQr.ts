@@ -9,66 +9,86 @@ export function useQr() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const qrCodeRef = useRef<string | null>(null); // Último QR processado
 
-  const carregarQr = useCallback(
-    async (usuario_id: string, canvas?: HTMLCanvasElement) => {
+  // 👇 Nova função: faz polling do QR até ele estar disponível
+  const esperarQrCode = async (
+    usuario_id: string,
+    canvas?: HTMLCanvasElement,
+    tentativas = 10,
+    intervalo = 3000
+  ) => {
+    for (let i = 0; i < tentativas; i++) {
       console.log(
-        `[useQr] 🎯 Iniciando busca do QR para usuário: ${usuario_id}`
+        `[useQr] 🔄 Tentativa ${i + 1}/${tentativas} de buscar QR...`
       );
-      setLoading(true);
-      setStatusMsg("Buscando QR Code...");
+      const ok = await carregarQr(usuario_id, canvas, true);
+      if (ok) return true;
+      await new Promise((r) => setTimeout(r, intervalo));
+    }
+    console.warn("[useQr] ❌ QR não encontrado após polling.");
+    return false;
+  };
+
+  // ⚙️ Modificado: recebe `silent` para não alterar statusMsg em tentativas do polling
+  const carregarQr = useCallback(
+    async (
+      usuario_id: string,
+      canvas?: HTMLCanvasElement,
+      silent: boolean = false
+    ): Promise<boolean> => {
+      if (!silent) {
+        console.log(
+          `[useQr] 🎯 Iniciando busca do QR para usuário: ${usuario_id}`
+        );
+        setLoading(true);
+        setStatusMsg("Buscando QR Code...");
+      }
 
       try {
         const res = await fetch(
           `${import.meta.env.VITE_API_URL}/qr?usuario_id=${usuario_id}`
         );
 
-        if (!res.ok) {
-          throw new Error(`Erro HTTP: ${res.status}`);
-        }
-
+        if (!res.ok) throw new Error(`Erro HTTP: ${res.status}`);
         const data = await res.json();
 
         if (!data?.qr) {
-          setStatusMsg("QR não encontrado");
-          console.warn("[useQr] ⚠️ QR não encontrado no Supabase.");
-          return;
+          if (!silent) setStatusMsg("QR não encontrado");
+          return false;
         }
 
-        // Evita reprocessar o mesmo QR
         if (data.qr === qrCodeRef.current) {
           console.log(
             "[useQr] ⏭️ QR já processado anteriormente. Ignorando..."
           );
-          return;
+          return true;
         }
 
         qrCodeRef.current = data.qr;
         setQrCode(data.qr);
-        setStatusMsg("QR pronto!");
+        if (!silent) setStatusMsg("QR pronto!");
 
         console.log("[useQr] 📦 QR recebido do backend:", data.qr);
         if (canvas) {
-          console.log("[useQr] 🎨 Renderizando QR no canvas...");
           await QRCode.toCanvas(canvas, data.qr);
           console.log("[useQr] ✅ QR renderizado com sucesso.");
-        } else {
-          console.warn(
-            "[useQr] ⚠️ Canvas não fornecido. QR não foi desenhado."
-          );
         }
+
+        return true;
       } catch (err) {
         console.error("[useQr] ❌ Erro ao carregar QR:", err);
-        setStatusMsg("Erro ao buscar QR");
+        if (!silent) setStatusMsg("Erro ao buscar QR");
+        return false;
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
-    [] // Garantido: função memoizada estaticamente
+    []
   );
 
   return {
     qrCode,
     carregarQr,
+    esperarQrCode,
     loading,
     statusMsg,
   };
