@@ -177,13 +177,13 @@ export default function QR() {
     iniciarProcesso();
 
     return () => {
-      const intervalId = intervalRef.current;
-      const subscription = subscriptionRef.current;
+      const intervalIdToClear = intervalRef.current;
+      const subscriptionToRemove = subscriptionRef.current;
 
-      if (intervalId) clearInterval(intervalId);
-      if (subscription) supabase.removeChannel(subscription);
+      if (intervalIdToClear) clearInterval(intervalIdToClear);
+      if (subscriptionToRemove) supabase.removeChannel(subscriptionToRemove);
     };
-  }, [navigate, carregarQr]);
+  }, [navigate, esperarQrCode, carregarQr]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">
