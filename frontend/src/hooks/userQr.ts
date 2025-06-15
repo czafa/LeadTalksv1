@@ -13,8 +13,8 @@ export function useQr() {
   const esperarQrCode = async (
     usuario_id: string,
     canvas?: HTMLCanvasElement,
-    tentativas = 10,
-    intervalo = 3000
+    tentativas = 5,
+    intervalo = 20000
   ) => {
     for (let i = 0; i < tentativas; i++) {
       console.log(
