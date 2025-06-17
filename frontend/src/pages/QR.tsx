@@ -1,3 +1,5 @@
+//GitHub/LeadTalksv1/frontend/src/pages/QR.tsx
+
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -63,8 +65,8 @@ export default function QR() {
         setEsperandoQr(false);
 
         // 🌐 Busca URL do servidor socket (via ngrok)
-        const resp = await fetch("/api/socket-url");
-        const { socketUrl } = await resp.json();
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/socketUrl`);
+        const { socketUrl } = await res.json();
 
         // 🔌 Conecta ao socket usando a URL dinâmica
         const socket = io(socketUrl);
