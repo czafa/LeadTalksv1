@@ -39,43 +39,54 @@ export default function QR() {
 
   useEffect(() => {
     async function iniciar() {
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
-      if (!user) return navigate("/login");
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data.user;
+        if (!user) return navigate("/login");
 
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      if (!token) return navigate("/login");
+        const session = await supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        if (!token) return navigate("/login");
 
-      const usuario_id = user.id;
+        const usuario_id = user.id;
 
-      await iniciarSessaoBackend(usuario_id, token);
-      setEsperandoQr(true);
+        // 🔐 Inicia sessão no backend da Vercel
+        await iniciarSessaoBackend(usuario_id, token);
+        setEsperandoQr(true);
 
-      // Aguarda backend preparar o socket antes de tentar renderizar o QR
-      await new Promise((r) => setTimeout(r, 4000));
+        // ⏳ Aguarda backend preparar o socket antes do QR
+        await new Promise((r) => setTimeout(r, 4000));
 
-      await esperarQrCode(usuario_id, canvasRef.current || undefined);
-      console.log("[LeadTalk] ✅ QR renderizado com sucesso.");
-      setEsperandoQr(false);
+        // 🎯 Tenta renderizar QR no canvas
+        await esperarQrCode(usuario_id, canvasRef.current || undefined);
+        console.log("[LeadTalk] ✅ QR renderizado com sucesso.");
+        setEsperandoQr(false);
 
-      const socket = io(import.meta.env.VITE_API_URL);
-      socketRef.current = socket;
+        // 🌐 Busca URL do servidor socket (via ngrok)
+        const resp = await fetch("/api/socket-url");
+        const { socketUrl } = await resp.json();
 
-      socket.on("connect", () => {
-        console.log("[Socket] 🔌 Conectado ao servidor socket.");
-      });
+        // 🔌 Conecta ao socket usando a URL dinâmica
+        const socket = io(socketUrl);
+        socketRef.current = socket;
 
-      socket.on("connection_open", (payload: { usuario_id: string }) => {
-        if (payload.usuario_id === usuario_id) {
-          console.log("[LeadTalk] ✅ WhatsApp conectado.");
-          navigate("/home");
-        }
-      });
+        socket.on("connect", () => {
+          console.log("[Socket] 🔌 Conectado ao servidor socket.");
+        });
 
-      socket.on("disconnect", () => {
-        console.warn("[Socket] 🔌 Desconectado do servidor socket.");
-      });
+        socket.on("connection_open", (payload: { usuario_id: string }) => {
+          if (payload.usuario_id === usuario_id) {
+            console.log("[LeadTalk] ✅ WhatsApp conectado.");
+            navigate("/home");
+          }
+        });
+
+        socket.on("disconnect", () => {
+          console.warn("[Socket] 🔌 Desconectado do servidor socket.");
+        });
+      } catch (err) {
+        console.error("[LeadTalk] ❌ Erro no fluxo de QR:", err);
+      }
     }
 
     iniciar();
