@@ -39,12 +39,17 @@ export default function Login() {
     const BACKEND_URL = import.meta.env.VITE_API_URL;
 
     await fetch(`${BACKEND_URL}/sessao`, {
+      // envia para o /backend o json com o usuario_id, logado e conectado.
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ usuario_id }),
+      body: JSON.stringify({
+        usuario_id,
+        logado: true,
+        conectado: false,
+      }),
     });
 
     navigate("/qr");

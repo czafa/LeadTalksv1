@@ -1,5 +1,3 @@
-//GitHub/LeadTalksv1/whatsapp-core/core/socketManager.js
-
 import { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import {
   makeWASocket,
@@ -12,11 +10,7 @@ import fs from "fs";
 import path from "path";
 import { supabase } from "../supabase.js";
 
-import {
-  salvarQrNoSupabase,
-  marcarSessaoAtiva,
-  marcarSessaoInativa,
-} from "./qrManager.js";
+import { salvarQrNoSupabase } from "./qrManager.js";
 
 import {
   exportarContatos,
@@ -43,7 +37,7 @@ export async function criarSocket(usuario_id, onQr) {
   // 🚫 Bloqueia se a sessão estiver inativa
   const { data: sessao } = await supabase
     .from("sessao")
-    .select("ativo")
+    .select("logado, conectado")
     .eq("usuario_id", usuario_id)
     .single();
 
@@ -52,10 +46,15 @@ export async function criarSocket(usuario_id, onQr) {
     sessao
   );
 
+  if (!sessao?.logado) {
+    console.warn(`[LeadTalk] ❌ Usuário ${usuario_id} não está logado.`);
+    return null;
+  }
+
   const pasta = path.join("./auth", usuario_id);
   const arquivos = fs.existsSync(pasta) ? fs.readdirSync(pasta) : [];
 
-  if (sessao?.ativo === true && arquivos.length > 0) {
+  if (sessao?.logado === true && arquivos.length > 0) {
     console.warn(
       `[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}. Ignorando novo socket. Arquivos:`,
       arquivos
@@ -147,6 +146,11 @@ export async function criarSocket(usuario_id, onQr) {
 
         await supabase.from("qr").delete().eq("usuario_id", usuario_id);
 
+        await supabase
+          .from("sessao")
+          .update({ conectado: true })
+          .eq("usuario_id", usuario_id);
+
         const aguardarContatos = async (timeout = 20000) => {
           const start = Date.now();
           while (
@@ -172,11 +176,7 @@ export async function criarSocket(usuario_id, onQr) {
         if (contatosOk) {
           await exportarContatos(store, usuario_id);
           await exportarGruposESuasPessoas(sock, store, usuario_id);
-          await marcarSessaoAtiva(usuario_id); // ✅ Somente após sucesso real
-        } else {
-          console.warn(
-            "[LeadTalk] ❌ Contatos não carregados. Sessão não será marcada como ativa."
-          );
+          io?.to(usuario_id).emit("session-ready");
         }
       }
 
@@ -187,14 +187,13 @@ export async function criarSocket(usuario_id, onQr) {
         if (deveReconectar) {
           console.log("🔄 Conexão perdida. Tentando reconectar...");
 
-          // ✅ Verifica se a sessão ainda está ativa antes de tentar reconectar
           const { data: sessaoReconectar } = await supabase
             .from("sessao")
-            .select("ativo")
+            .select("logado")
             .eq("usuario_id", usuario_id)
             .single();
 
-          if (sessaoReconectar?.ativo) {
+          if (sessaoReconectar?.logado) {
             setTimeout(() => criarSocket(usuario_id, onQr), 5000);
           } else {
             console.warn(
@@ -202,8 +201,12 @@ export async function criarSocket(usuario_id, onQr) {
             );
           }
         } else {
-          await marcarSessaoInativa(usuario_id);
-          console.log("🔒 Sessão encerrada e marcada como inativa.");
+          await supabase
+            .from("sessao")
+            .update({ conectado: false })
+            .eq("usuario_id", usuario_id);
+
+          console.log("🔒 Sessão encerrada e marcada como desconectada.");
         }
       }
     }

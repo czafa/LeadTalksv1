@@ -24,7 +24,8 @@ export default async function handler(req, res) {
   const { error } = await supabase.from("sessao").upsert(
     {
       usuario_id,
-      ativo: false,
+      logado: true, // ✅ marca como logado
+      conectado: false, // ❌ ainda não está conectado ao WhatsApp
       atualizado_em: new Date(),
     },
     { onConflict: ["usuario_id"] }
@@ -35,5 +36,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ erro: "Erro ao ativar sessão" });
   }
 
-  return res.status(200).json({ status: "sessão ativada" });
+  return res.status(200).json({ status: "sessão logada aguardando conexão" });
 }

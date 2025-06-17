@@ -19,31 +19,38 @@ export default function ProtectedRoute({ children }: Props) {
       const user = userData.user;
       const token = session.data.session?.access_token;
 
-      if (!user || !token) return setAutorizado(false);
-
-      // ✅ Se rota for /qr, só exige login
-      if (location.pathname === "/qr") {
-        return setAutorizado(true);
+      if (!user || !token) {
+        setAutorizado(false);
+        return;
       }
 
-      // ✅ Se for /home, exige login + sessao ativa
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ usuario_id: user.id }),
-      });
+      // ✅ Para a rota /qr: basta estar logado
+      if (location.pathname === "/qr") {
+        setAutorizado(true);
+        return;
+      }
 
-      const result = await res.json();
-      setAutorizado(result.ativo === true);
+      // ✅ Para rotas protegidas (/home), exige logado + conectado (sessão ativa)
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const result = await res.json();
+        setAutorizado(result.ativo === true);
+      } catch (err) {
+        console.error("Erro ao verificar sessão:", err);
+        setAutorizado(false);
+      }
     };
 
     verificar();
   }, [location.pathname]);
 
-  if (autorizado === null) return null;
+  if (autorizado === null) return null; // ou coloque um spinner se quiser
 
   return autorizado ? <>{children}</> : <Navigate to="/qr" />;
 }

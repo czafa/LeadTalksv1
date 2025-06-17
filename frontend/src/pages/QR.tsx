@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import { useQr } from "../hooks/userQr";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import io from "socket.io-client";
+import type { Socket } from "socket.io-client";
 
-// 🔐 Inicia sessão no backend
 async function iniciarSessaoBackend(usuario_id: string, token: string) {
   try {
     const res = await fetch(
@@ -19,171 +19,71 @@ async function iniciarSessaoBackend(usuario_id: string, token: string) {
       }
     );
 
-    if (res.ok) {
-      console.log("[LeadTalk] 🚀 Sessão iniciada no backend.");
-    } else {
+    if (!res.ok) {
       console.error("[LeadTalk] ❌ Falha ao iniciar sessão no backend.");
+    } else {
+      console.log("[LeadTalk] 🚀 Sessão iniciada no backend.");
     }
   } catch (err) {
     console.error("[LeadTalk] ❌ Erro de rede ao iniciar sessão:", err);
   }
 }
 
-// 🔄 Polling como fallback
-async function verificarAtivoViaPolling(
-  token: string,
-  jaRedirecionouRef: React.MutableRefObject<boolean>,
-  qrRenderizadoRef: React.MutableRefObject<boolean>,
-  navigate: ReturnType<typeof useNavigate>,
-  intervalRef: React.MutableRefObject<NodeJS.Timeout | null>
-) {
-  let tentativa = 0;
-
-  intervalRef.current = setInterval(async () => {
-    tentativa++;
-    console.log(`⏱ Verificando sessão via polling (${tentativa}/5)...`);
-
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const { ativo } = await res.json();
-
-      if (ativo && qrRenderizadoRef.current && !jaRedirecionouRef.current) {
-        console.log(
-          "✅ Sessão ativa e QR renderizado. Redirecionando via polling..."
-        );
-        jaRedirecionouRef.current = true;
-        clearInterval(intervalRef.current!);
-        navigate("/home");
-      }
-
-      if (tentativa >= 5) {
-        console.warn("❌ Polling encerrado. Sessão não detectada.");
-        clearInterval(intervalRef.current!);
-      }
-    } catch (err) {
-      console.error("❌ Erro ao consultar sessão via polling:", err);
-      clearInterval(intervalRef.current!);
-    }
-  }, 5000);
-}
-
-// 📡 Realtime Supabase listener
-function monitorarSessaoRealtime(
-  usuario_id: string,
-  jaRedirecionouRef: React.MutableRefObject<boolean>,
-  qrRenderizadoRef: React.MutableRefObject<boolean>,
-  intervalRef: React.MutableRefObject<NodeJS.Timeout | null>,
-  navigate: ReturnType<typeof useNavigate>
-): RealtimeChannel {
-  console.log("📡 Escutando atualizações da tabela 'sessao'...");
-
-  return supabase
-    .channel("sessao-status")
-    .on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "sessao",
-        filter: `usuario_id=eq.${usuario_id}`,
-      },
-      (payload) => {
-        const ativo = payload?.new?.ativo === true;
-        if (ativo && qrRenderizadoRef.current && !jaRedirecionouRef.current) {
-          console.log(
-            "✅ Sessão ativa e QR renderizado. Redirecionando via Realtime..."
-          );
-          jaRedirecionouRef.current = true;
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          navigate("/home");
-        }
-      }
-    )
-    .subscribe();
-}
-
-// 📱 Componente QR
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const subscriptionRef = useRef<RealtimeChannel | null>(null);
-  const jaRedirecionouRef = useRef(false);
-  const qrRenderizadoRef = useRef(false);
+  const socketRef = useRef<Socket | null>(null);
   const navigate = useNavigate();
 
-  const { carregarQr, esperarQrCode, statusMsg } = useQr();
+  const { esperarQrCode, statusMsg } = useQr();
   const [esperandoQr, setEsperandoQr] = useState(true);
 
   useEffect(() => {
-    async function iniciarProcesso() {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
+    async function iniciar() {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
       if (!user) return navigate("/login");
 
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) return navigate("/login");
 
-      // 1. Verifica se já está ativo
-      try {
-        const status = await fetch(`${import.meta.env.VITE_API_URL}/sessao`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await status.json();
+      const usuario_id = user.id;
 
-        if (json?.ativo === true) {
-          console.warn("[LeadTalk] ⚠️ Sessão já está ativa no Supabase.");
-        }
-      } catch (err) {
-        console.error("❌ Erro ao consultar status da sessão:", err);
-      }
-
-      // 2. Inicia sessão
-      await iniciarSessaoBackend(user.id, token);
+      await iniciarSessaoBackend(usuario_id, token);
       setEsperandoQr(true);
 
-      // 3. Espera geração do QR no Supabase
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Aguarda backend preparar o socket antes de tentar renderizar o QR
+      await new Promise((r) => setTimeout(r, 4000));
 
-      // 4. Renderiza o QR
-      console.log("🖼️ Canvas recebido:", canvasRef.current);
-      await esperarQrCode(user.id, canvasRef.current || undefined);
-      console.log("✅ QR renderizado no canvas com sucesso.");
-      qrRenderizadoRef.current = true;
+      await esperarQrCode(usuario_id, canvasRef.current || undefined);
+      console.log("[LeadTalk] ✅ QR renderizado com sucesso.");
       setEsperandoQr(false);
 
-      // 5. Escuta realtime
-      subscriptionRef.current = monitorarSessaoRealtime(
-        user.id,
-        jaRedirecionouRef,
-        qrRenderizadoRef,
-        intervalRef,
-        navigate
-      );
+      const socket = io(import.meta.env.VITE_API_URL);
+      socketRef.current = socket;
 
-      // 6. Polling como fallback
-      await verificarAtivoViaPolling(
-        token,
-        jaRedirecionouRef,
-        qrRenderizadoRef,
-        navigate,
-        intervalRef
-      );
+      socket.on("connect", () => {
+        console.log("[Socket] 🔌 Conectado ao servidor socket.");
+      });
+
+      socket.on("connection_open", (payload: { usuario_id: string }) => {
+        if (payload.usuario_id === usuario_id) {
+          console.log("[LeadTalk] ✅ WhatsApp conectado.");
+          navigate("/home");
+        }
+      });
+
+      socket.on("disconnect", () => {
+        console.warn("[Socket] 🔌 Desconectado do servidor socket.");
+      });
     }
 
-    iniciarProcesso();
+    iniciar();
 
     return () => {
-      const intervalIdToClear = intervalRef.current;
-      const subscriptionToRemove = subscriptionRef.current;
-
-      if (intervalIdToClear) clearInterval(intervalIdToClear);
-      if (subscriptionToRemove) supabase.removeChannel(subscriptionToRemove);
+      if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [navigate, esperarQrCode, carregarQr]);
+  }, [esperarQrCode, navigate]);
 
   return (
     <div className="bg-white p-6 rounded shadow-md text-center max-w-md mx-auto mt-10">
@@ -194,7 +94,7 @@ export default function QR() {
 
       {esperandoQr && (
         <div className="flex flex-col items-center justify-center mt-6 animate-pulse">
-          <div className="w-12 h-12 border-4 border-blue-500 border-dashed rounded-full animate-spin mb-3"></div>
+          <div className="w-12 h-12 border-4 border-blue-500 border-dashed rounded-full animate-spin mb-3" />
           <p className="text-blue-700 text-sm font-medium">Preparando QR...</p>
         </div>
       )}
