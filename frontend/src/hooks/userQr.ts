@@ -1,4 +1,4 @@
-//GitHub/LeadTalksv1/frontend/src/hooks/userQr.ts
+// GitHub/LeadTalksv1/frontend/src/hooks/userQr.ts
 
 import { useState, useRef, useCallback } from "react";
 import QRCode from "qrcode";
@@ -9,26 +9,7 @@ export function useQr() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const qrCodeRef = useRef<string | null>(null); // Último QR processado
 
-  // 👇 Nova função: faz polling do QR até ele estar disponível
-  const esperarQrCode = async (
-    usuario_id: string,
-    canvas?: HTMLCanvasElement,
-    tentativas = 5,
-    intervalo = 20000
-  ) => {
-    for (let i = 0; i < tentativas; i++) {
-      console.log(
-        `[useQr] 🔄 Tentativa ${i + 1}/${tentativas} de buscar QR...`
-      );
-      const ok = await carregarQr(usuario_id, canvas, true);
-      if (ok) return true;
-      await new Promise((r) => setTimeout(r, intervalo));
-    }
-    console.warn("[useQr] ❌ QR não encontrado após polling.");
-    return false;
-  };
-
-  // ⚙️ Modificado: recebe `silent` para não alterar statusMsg em tentativas do polling
+  // ⚙️ Busca e renderiza o QR Code
   const carregarQr = useCallback(
     async (
       usuario_id: string,
@@ -82,7 +63,29 @@ export function useQr() {
         if (!silent) setLoading(false);
       }
     },
-    []
+    [] // ✅ função independente (sem dependências externas)
+  );
+
+  // 🔁 Polling controlado para buscar o QR em tentativas
+  const esperarQrCode = useCallback(
+    async (
+      usuario_id: string,
+      canvas?: HTMLCanvasElement,
+      tentativas = 5,
+      intervalo = 20000
+    ): Promise<boolean> => {
+      for (let i = 0; i < tentativas; i++) {
+        console.log(
+          `[useQr] 🔄 Tentativa ${i + 1}/${tentativas} de buscar QR...`
+        );
+        const ok = await carregarQr(usuario_id, canvas, true);
+        if (ok) return true;
+        await new Promise((res) => setTimeout(res, intervalo));
+      }
+      console.warn("[useQr] ❌ QR não encontrado após polling.");
+      return false;
+    },
+    [carregarQr] // ✅ depende de função estável
   );
 
   return {
