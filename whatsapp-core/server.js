@@ -1,4 +1,5 @@
-// server.js
+//GitHub/LeadTalksv1/whatsapp-core/server.js
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -9,26 +10,18 @@ import { supabase } from "./supabase.js";
 dotenv.config();
 
 const app = express();
-
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
-app.use(express.json());
-
 let socketInstancia = null;
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
 
 console.log("🔧 Iniciando server.js...");
 
-// Endpoint para retornar o último QR code diretamente da memória
+// === QR ===
 app.get("/api/qr", async (req, res) => {
   const { usuario_id } = req.query;
-
-  if (!usuario_id) {
+  if (!usuario_id)
     return res.status(400).json({ error: "usuario_id é obrigatório" });
-  }
 
   try {
     const { data, error } = await supabase
@@ -39,51 +32,38 @@ app.get("/api/qr", async (req, res) => {
       .limit(1)
       .single();
 
-    if (error || !data?.qr) {
-      console.warn(
-        `[API /qr] ❌ QR não encontrado no Supabase para ${usuario_id}`
-      );
+    if (error || !data?.qr)
       return res.status(404).json({ error: "QR não encontrado" });
-    }
-
-    console.log(`[API /qr] ✅ QR recuperado para ${usuario_id}`);
     return res.status(200).json({ qr: data.qr });
   } catch (err) {
-    console.error("Erro ao buscar QR no Supabase:", err.message);
-    return res.status(500).json({ error: "Erro interno ao buscar QR" });
+    return res.status(500).json({ error: "Erro ao buscar QR" });
   }
 });
 
-// Endpoint para envio direto de mensagem via WhatsApp já autenticado
+// === Enviar mensagem ===
 app.post("/api/enviar", async (req, res) => {
   const { numero, mensagem } = req.body;
 
-  if (!socketInstancia) {
+  if (!socketInstancia)
     return res.status(500).json({ error: "WhatsApp ainda não conectado" });
-  }
 
   try {
     const jid = `${numero.replace(/[^\d]/g, "")}@s.whatsapp.net`;
     await socketInstancia.sendMessage(jid, { text: mensagem });
-    console.log(`[LeadTalk] ✅ Mensagem enviada para ${numero}`);
     return res.status(200).json({ status: "Mensagem enviada" });
   } catch (err) {
-    console.error(`[LeadTalk] ❌ Erro ao enviar mensagem:`, err.message);
     return res.status(500).json({ error: "Falha no envio" });
   }
 });
 
-// Novo endpoint para iniciar sessão com usuário específico
-// server.js
+// === Iniciar sessão ===
 app.post("/start", async (req, res) => {
   const { usuario_id } = req.body;
-
-  if (!usuario_id) {
+  if (!usuario_id)
     return res.status(400).json({ error: "usuario_id é obrigatório" });
-  }
 
   if (socketInstancia) {
-    console.log(`[LeadTalk] ⚠️ Sessão já está ativa para ${usuario_id}`);
+    console.log(`[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}`);
     return res.status(200).json({ status: "Sessão já ativa" });
   }
 
@@ -91,46 +71,56 @@ app.post("/start", async (req, res) => {
     const { data: usuario, error } = await supabase.auth.admin.getUserById(
       usuario_id
     );
+    if (error || !usuario)
+      return res.status(404).json({ error: "Usuário não encontrado" });
 
-    if (error || !usuario) {
-      return res
-        .status(404)
-        .json({ error: "Usuário não encontrado no Supabase Auth" });
+    const { data: sessao } = await supabase
+      .from("sessao")
+      .select("logado", "conectado")
+      .eq("usuario_id", usuario_id)
+      .single();
+
+    if (!sessao?.logado) {
+      return res.status(403).json({ error: "Usuário não está logado" });
     }
 
-    console.log(`[LeadTalk] Iniciando sessão para o usuário: ${usuario_id}`);
-
-    await supabase
-      .from("sessao")
-      .upsert(
-        { usuario_id, ativo: false, atualizado_em: new Date().toISOString() },
-        { onConflict: "usuario_id" }
-      );
+    if (sessao?.conectado === true) {
+      return res.status(200).json({ status: "Sessão já conectada" });
+    }
 
     socketInstancia = await startLeadTalk({
       usuario_id,
       onQr: (qr) => {
-        console.log("[LeadTalk] QR code recebido.", qr);
+        console.log("[LeadTalk] 📸 QR recebido.");
         setQrCode(qr);
       },
     });
 
-    res.status(200).json({ status: "Sessão iniciada com sucesso" });
+    await supabase
+      .from("sessao")
+      .update({
+        conectado: true,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("usuario_id", usuario_id);
+
+    return res.status(200).json({ status: "Sessão iniciada com sucesso" });
   } catch (err) {
     console.error("Erro ao iniciar sessão:", err);
-    res.status(500).json({ error: "Falha ao iniciar sessão" });
+    return res.status(500).json({ error: "Falha ao iniciar sessão" });
   }
 });
 
+// === Reconectar sessão ===
 async function reconectarSessao() {
   try {
     const { data, error } = await supabase
       .from("sessao")
       .select("usuario_id")
-      .eq("ativo", true);
+      .eq("logado", true)
+      .eq("conectado", false);
 
-    if (error) throw error;
-    if (!data || data.length === 0) return;
+    if (error || !data?.length) return;
 
     const usuario_id = data[0].usuario_id;
     console.log(`[LeadTalk] 🔁 Reconectando sessão para ${usuario_id}...`);
@@ -142,6 +132,14 @@ async function reconectarSessao() {
         setQrCode(qr);
       },
     });
+
+    await supabase
+      .from("sessao")
+      .update({
+        conectado: true,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("usuario_id", usuario_id);
   } catch (err) {
     console.error("[LeadTalk] ⚠️ Erro ao reconectar sessão:", err.message);
   }
@@ -149,13 +147,11 @@ async function reconectarSessao() {
 
 app.listen(3001, () => {
   console.log("Servidor local do WhatsApp rodando na porta 3001.");
-  reconectarSessao(); // ✅ chamada correta
+  reconectarSessao();
 });
 
-// exoporta a instancia do socket para uso em outros módulos (envio de mensagens)
 export function getSocketInstance() {
   return socketInstancia;
 }
 
-// 🌀 Inicializa o processador da fila (enviar mensagens)
 import "./filaProcessor.js";

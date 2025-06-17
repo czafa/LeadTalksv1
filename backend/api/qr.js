@@ -1,8 +1,9 @@
-//GitHub/LeadTalksv1/backend/api/qr.js
+// GitHub/LeadTalksv1/backend/api/qr.js
 
 import { applyCors } from "../lib/cors.js";
 import fetch from "node-fetch";
 import { supabase } from "../lib/supabase.js";
+import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
   console.log("📦 [API /qr] Requisição recebida");
@@ -11,11 +12,10 @@ export default async function handler(req, res) {
     applyCors(res, req);
     return;
   }
-  applyCors(res, req); // Continua execução normalmente
+  applyCors(res, req);
 
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
 
-  // 🕵️ Log de rastreamento de origem
   const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
   const userAgent = req.headers["user-agent"];
   const now = new Date().toISOString();
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1️⃣ Verifica QR válido nos últimos 30s
+    // 🔍 Verifica QR recente
     const { data: qrAtivo, error: erroQr } = await supabase
       .from("qr")
       .select("qr, criado_em")
@@ -51,25 +51,9 @@ export default async function handler(req, res) {
       } | criado_em=${qrAtivo?.criado_em || "nenhum"}`
     );
 
-    // 2️⃣ Se não for válido, aciona /start no backend local
+    // 🔁 Se não houver QR válido, requisita geração no backend
     if (!qrAindaValido) {
-      const { data: config, error: erroConfig } = await supabase
-        .from("configuracoes")
-        .select("valor")
-        .eq("chave", "ngrok_url")
-        .single();
-
-      if (erroConfig || !config?.valor) {
-        console.error(
-          "[API /qr] ❌ Erro ao obter URL do backend local:",
-          erroConfig
-        );
-        return res
-          .status(500)
-          .json({ error: "URL do whatsapp-core não encontrada" });
-      }
-
-      const apiUrl = config.valor;
+      const apiUrl = await getNgrokUrl();
       console.log(`[API /qr] 🔄 Requisitando novo QR via ${apiUrl}/start`);
 
       const resposta = await fetch(`${apiUrl}/start`, {
@@ -85,7 +69,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3️⃣ Rebusca QR do Supabase (mesmo que o anterior)
+    // 📥 Busca QR do Supabase (após tentar iniciar nova sessão)
     const { data: qrFinal, error: erroQrFinal } = await supabase
       .from("qr")
       .select("qr")

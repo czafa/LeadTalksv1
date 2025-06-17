@@ -1,3 +1,5 @@
+// GitHub/LeadTalksv1/backend/lib/cors.js
+
 export function applyCors(res, req) {
   const isDev = process.env.NODE_ENV !== "production";
 
