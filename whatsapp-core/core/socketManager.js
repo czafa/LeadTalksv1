@@ -176,7 +176,9 @@ export async function criarSocket(usuario_id, onQr) {
         if (contatosOk) {
           await exportarContatos(store, usuario_id);
           await exportarGruposESuasPessoas(sock, store, usuario_id);
-          io?.to(usuario_id).emit("session-ready");
+
+          // ✅ Evento esperado pelo frontend
+          io?.to(usuario_id).emit("connection_open", { usuario_id });
         }
       }
 

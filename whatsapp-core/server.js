@@ -3,6 +3,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
+import { Server } from "socket.io";
 import { setQrCode, getQrCode } from "./qrStore.js";
 import { startLeadTalk } from "./leadtalks.js";
 import { supabase } from "./supabase.js";
@@ -10,6 +12,15 @@ import { supabase } from "./supabase.js";
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+  path: "/socket.io",
+});
+
 let socketInstancia = null;
 
 app.use(cors({ origin: true, credentials: true }));
@@ -93,6 +104,7 @@ app.post("/start", async (req, res) => {
       onQr: (qr) => {
         console.log("[LeadTalk] 📸 QR recebido.");
         setQrCode(qr);
+        io.to(usuario_id).emit("qr", { qr });
       },
     });
 
@@ -130,6 +142,7 @@ async function reconectarSessao() {
       onQr: (qr) => {
         console.log("[LeadTalk] 🔄 QR gerado na reativação.");
         setQrCode(qr);
+        io.to(usuario_id).emit("qr", { qr });
       },
     });
 
@@ -145,7 +158,7 @@ async function reconectarSessao() {
   }
 }
 
-app.listen(3001, () => {
+server.listen(3001, () => {
   console.log("Servidor local do WhatsApp rodando na porta 3001.");
   reconectarSessao();
 });

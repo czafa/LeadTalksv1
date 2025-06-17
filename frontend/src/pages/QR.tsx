@@ -69,7 +69,11 @@ export default function QR() {
         const { socketUrl } = await res.json();
 
         // 🔌 Conecta ao socket usando a URL dinâmica
-        const socket = io(socketUrl);
+        const socket = io(socketUrl, {
+          transports: ["websocket"], // ✅ força websocket (evita fallback para polling)
+          path: "/socket.io", // ✅ necessário para bater exatamente com o backend
+        });
+
         socketRef.current = socket;
 
         socket.on("connect", () => {
