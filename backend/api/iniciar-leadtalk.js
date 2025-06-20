@@ -11,8 +11,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ erro: "Método não permitido" });
   }
 
+  // 1. Validação da sessão do usuário
   const validacao = await validarRequisicaoSessao(req);
-
   if (!validacao.autorizado) {
     return res
       .status(validacao.status || 401)
@@ -20,49 +20,89 @@ export default async function handler(req, res) {
   }
 
   const { usuario_id } = validacao;
-
   if (!usuario_id) {
-    return res.status(400).json({ erro: "usuario_id ausente após validação" });
+    return res
+      .status(400)
+      .json({ erro: "ID do usuário ausente após validação" });
   }
 
-  console.log("[LeadTalk] ✅ Validação autorizada para:", usuario_id);
+  console.log("[LeadTalk] ✅ Validação de sessão autorizada para:", usuario_id);
 
   try {
-    const { error } = await supabase.from("sessao").upsert(
+    // 2. Garante que a sessão esteja marcada como 'logado' no banco
+    const { error: upsertError } = await supabase.from("sessao").upsert(
       {
         usuario_id,
         logado: true,
-        conectado: false,
+        conectado: false, // Define como 'false' até que o Baileys confirme a conexão
         atualizado_em: new Date().toISOString(),
       },
       { onConflict: ["usuario_id"] }
     );
 
-    if (error) {
-      console.error("[LeadTalk] ❌ Erro ao ativar sessão:", error);
-      return res.status(500).json({ erro: "Erro ao ativar sessão" });
-    }
-
-    // 🚀 Aciona o backend local para iniciar o socket
-    const ngrokUrl = await getNgrokUrl();
-    const resposta = await fetch(`${ngrokUrl}/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario_id }),
-    });
-
-    if (!resposta.ok) {
-      console.warn(
-        `[LeadTalk] ⚠️ Backend local respondeu erro ao iniciar sessão. Status: ${resposta.status}`
+    if (upsertError) {
+      console.error(
+        "[LeadTalk] ❌ Erro ao ativar sessão no Supabase:",
+        upsertError
       );
-      // Ainda retornamos sucesso para não quebrar o frontend
+      return res
+        .status(500)
+        .json({ erro: "Erro ao registrar estado da sessão." });
     }
 
+    // --- SEÇÃO CORRIGIDA ---
+    // 3. Aciona o backend local (whatsapp-core) para iniciar a conexão
+    const ngrokUrl = await getNgrokUrl();
+    if (!ngrokUrl) {
+      console.error(
+        "[LeadTalk] ❌ URL do backend local (ngrok) não foi encontrada no banco."
+      );
+      return res
+        .status(503)
+        .json({
+          erro: "Serviço de conexão temporariamente indisponível. (URL não configurada)",
+        });
+    }
+
+    try {
+      const resposta = await fetch(`${ngrokUrl}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario_id }),
+        // Adicionar um timeout pode ser útil em produção
+      });
+
+      // MELHORIA: Se a resposta do backend local não for 'OK', retorna um erro.
+      if (!resposta.ok) {
+        const corpoErro = await resposta.text(); // Pega o corpo do erro para debug
+        console.warn(
+          `[LeadTalk] ⚠️ Backend local respondeu com erro. Status: ${resposta.status}, Corpo: ${corpoErro}`
+        );
+        return res.status(502).json({
+          // 502 Bad Gateway: O servidor atuou como gateway e recebeu uma resposta inválida.
+          erro: "Falha ao comunicar com o serviço de conexão. Tente novamente mais tarde.",
+        });
+      }
+    } catch (fetchError) {
+      // Pega erros de rede, como o backend local estar offline.
+      console.error(
+        "[LeadTalk] ❌ Erro de rede ao contatar o backend local:",
+        fetchError.message
+      );
+      return res.status(504).json({
+        // 504 Gateway Timeout: O servidor atuou como gateway e não obteve resposta a tempo.
+        erro: "O serviço de conexão parece estar offline. Verifique o servidor local.",
+      });
+    }
+
+    // retorna para o frontend
     return res
       .status(200)
-      .json({ status: "sessão logada e conexão em andamento" });
+      .json({
+        status: "Requisição para iniciar a conexão enviada com sucesso.",
+      });
   } catch (err) {
-    console.error("[LeadTalk] ❌ Erro inesperado:", err);
-    return res.status(500).json({ erro: "Erro interno no servidor" });
+    console.error("[LeadTalk] ❌ Erro inesperado no handler:", err);
+    return res.status(500).json({ erro: "Erro interno no servidor." });
   }
 }

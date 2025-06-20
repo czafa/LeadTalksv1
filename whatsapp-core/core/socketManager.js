@@ -1,3 +1,5 @@
+//GitHub/LeadTalksv1/whatsapp-core/core/socketManager.js
+
 import { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import {
   makeWASocket,
@@ -9,6 +11,10 @@ import pino from "pino";
 import fs from "fs";
 import path from "path";
 import { supabase } from "../supabase.js";
+console.log(
+  "[DEBUG] Supabase client pronto:",
+  typeof supabase.from === "function"
+);
 
 import { salvarQrNoSupabase } from "./qrManager.js";
 
@@ -33,7 +39,7 @@ setInterval(() => store.writeToFile(`${DATA_DIR}/store.json`), 10_000);
  * @param {Function} [onQr] - Callback opcional para lidar com o QR Code
  * @returns {Promise<any>} - Retorna a instância do socket ou null se sessão inativa
  */
-export async function criarSocket(usuario_id, onQr) {
+export async function criarSocket(usuario_id, onQr, io) {
   // 🚫 Bloqueia se a sessão estiver inativa
   const { data: sessao } = await supabase
     .from("sessao")
@@ -41,24 +47,17 @@ export async function criarSocket(usuario_id, onQr) {
     .eq("usuario_id", usuario_id)
     .single();
 
-  console.log(
-    `[DEBUG] Resultado de supabase para sessao do ${usuario_id}:`,
-    sessao
-  );
+  console.log(`[DEBUG - Supabase] Sessão obtida para ${usuario_id}:`, sessao);
 
   if (!sessao?.logado) {
-    console.warn(`[LeadTalk] ❌ Usuário ${usuario_id} não está logado.`);
+    console.warn(
+      `[LeadTalk] ❌ Sessão não está logada para ${usuario_id}. Abortando criação do socket.`
+    );
     return null;
   }
 
-  const pasta = path.join("./auth", usuario_id);
-  const arquivos = fs.existsSync(pasta) ? fs.readdirSync(pasta) : [];
-
-  if (sessao?.logado === true && arquivos.length > 0) {
-    console.warn(
-      `[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}. Ignorando novo socket. Arquivos:`,
-      arquivos
-    );
+  if (sessao?.conectado) {
+    console.warn(`[LeadTalk] ⚠️ Sessão já conectada para ${usuario_id}.`);
     return null;
   }
 
@@ -66,16 +65,14 @@ export async function criarSocket(usuario_id, onQr) {
 
   if (!fs.existsSync(pastaUsuario)) {
     fs.mkdirSync(pastaUsuario, { recursive: true });
+    console.log(`[FS] 📁 Criada pasta de autenticação: ${pastaUsuario}`);
   }
 
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState(pastaUsuario);
 
   console.log(
-    "[DEBUG] 🧩 Criando socket com versão:",
-    version,
-    "usuário:",
-    usuario_id
+    `[Baileys] 🧩 Iniciando socket na versão ${version} para ${usuario_id}`
   );
 
   const sock = makeWASocket({
@@ -94,6 +91,9 @@ export async function criarSocket(usuario_id, onQr) {
 
   // Atualiza contatos locais
   sock.ev.on("contacts.update", async (updates) => {
+    console.log(
+      `[Baileys] 🔄 Recebida atualização de ${updates.length} contatos`
+    );
     const contatosAtualizados = updates
       .filter((contato) => contato.id.endsWith("@s.whatsapp.net"))
       .map((contato) => ({
@@ -103,7 +103,12 @@ export async function criarSocket(usuario_id, onQr) {
         usuario_id,
       }));
 
-    if (contatosAtualizados.length === 0) return;
+    if (contatosAtualizados.length === 0) {
+      console.log(
+        "[Baileys] ⚠️ Nenhum contato com ID válido encontrado. Ignorando atualização."
+      );
+      return;
+    }
 
     const arquivo = `./data/contatos_${usuario_id}.json`;
     let contatosExistentes = [];
@@ -112,8 +117,11 @@ export async function criarSocket(usuario_id, onQr) {
       try {
         const raw = fs.readFileSync(arquivo, "utf-8");
         contatosExistentes = JSON.parse(raw);
+        console.log(
+          `[Arquivo] 📁 Contatos existentes carregados de ${arquivo}`
+        );
       } catch (err) {
-        console.warn(`[LeadTalk] ⚠️ Erro ao ler ${arquivo}: ${err.message}`);
+        console.warn(`[Arquivo] ⚠️ Erro ao ler ${arquivo}: ${err.message}`);
       }
     }
 
@@ -121,12 +129,22 @@ export async function criarSocket(usuario_id, onQr) {
       (novo) => !contatosExistentes.some((c) => c.numero === novo.numero)
     );
 
-    const todos = [...contatosExistentes, ...novosContatos];
-    fs.writeFileSync(arquivo, JSON.stringify(todos, null, 2));
+    if (novosContatos.length === 0) {
+      console.log("[LeadTalk] ℹ️ Nenhum novo contato foi adicionado.");
+      return;
+    }
 
-    console.log(
-      `[LeadTalk] ✅ ${novosContatos.length} novos contatos adicionados a ${arquivo}`
-    );
+    const todos = [...contatosExistentes, ...novosContatos];
+    try {
+      fs.writeFileSync(arquivo, JSON.stringify(todos, null, 2));
+      console.log(
+        `[Arquivo] ✅ ${novosContatos.length} novos contatos salvos em ${arquivo}`
+      );
+    } catch (err) {
+      console.error(
+        `[Arquivo] ❌ Erro ao salvar contatos em ${arquivo}: ${err.message}`
+      );
+    }
   });
 
   // Gerencia eventos de conexão
@@ -136,49 +154,58 @@ export async function criarSocket(usuario_id, onQr) {
       if (qr && usuario_id) {
         await salvarQrNoSupabase(qr, usuario_id);
         onQr?.(qr);
-        console.log("[LeadTalk] 📸 QR gerado:", qr.slice(0, 30));
+        console.log("[Baileys] 📸 QR gerado:", qr.slice(0, 30));
       }
 
       if (connection === "open") {
         console.log(
-          "[LeadTalk] ✅ Conexão aberta. Aguardando carregamento completo..."
+          "[Baileys] ✅ Conexão aberta. Aguardando carregamento completo..."
         );
 
-        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+        try {
+          // Apaga QR antigo
+          await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+          console.log("[Supabase] 🧹 QR antigo apagado da tabela `qr`.");
 
-        await supabase
-          .from("sessao")
-          .update({ conectado: true })
-          .eq("usuario_id", usuario_id);
+          // Atualiza sessão no Supabase
+          console.log("[DEBUG - Supabase] Atualizando `conectado = true");
+          const { error } = await supabase
+            .from("sessao")
+            .update({
+              conectado: true,
+              atualizado_em: new Date().toISOString(),
+            })
+            .eq("usuario_id", usuario_id);
 
-        const aguardarContatos = async (timeout = 20000) => {
-          const start = Date.now();
-          while (
-            Object.keys(store.contacts).length === 0 &&
-            Date.now() - start < timeout
-          ) {
-            console.log("[LeadTalk] ⏳ Aguardando contatos do WhatsApp...");
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-
-          const sucesso = Object.keys(store.contacts).length > 0;
-          if (sucesso) {
-            console.log("[LeadTalk] ✅ Contatos carregados com sucesso.");
+          if (error) {
+            console.error(
+              "[Supabase] ❌ ERRO ao atualizar conectado no Supabase:",
+              error
+            );
           } else {
-            console.warn("[LeadTalk] ⚠️ Timeout: contatos não carregados.");
+            console.log(
+              "[Supabase] ✅ Sessão marcada como conectada no Supabase."
+            );
           }
 
-          return sucesso;
-        };
+          // Aguarda contatos serem carregados
+          const contatosCarregados = await aguardarContatos(store);
+          if (contatosCarregados) {
+            console.log("[LeadTalk] 🚀 Exportando contatos e grupos...");
+            await exportarContatos(store, usuario_id);
+            await exportarGruposESuasPessoas(sock, store, usuario_id);
+            console.log("[LeadTalk] ✅ Exportações concluídas.");
+          }
 
-        const contatosOk = await aguardarContatos();
-
-        if (contatosOk) {
-          await exportarContatos(store, usuario_id);
-          await exportarGruposESuasPessoas(sock, store, usuario_id);
-
-          // ✅ Evento esperado pelo frontend
-          io?.to(usuario_id).emit("connection_open", { usuario_id });
+          // ✅ Emitir evento esperado pelo frontend
+          if (io) {
+            io.to(usuario_id).emit("connection_open", { usuario_id });
+            console.log(
+              `[Socket] 🔔 Evento connection_open emitido para ${usuario_id}`
+            );
+          }
+        } catch (err) {
+          console.error("[LeadTalk] ❌ Erro durante processo de conexão:", err);
         }
       }
 
@@ -187,7 +214,7 @@ export async function criarSocket(usuario_id, onQr) {
         const deveReconectar = !status || status !== 401;
 
         if (deveReconectar) {
-          console.log("🔄 Conexão perdida. Tentando reconectar...");
+          console.log("[Baileys] 🔄 Conexão perdida. Tentando reconectar...");
 
           const { data: sessaoReconectar } = await supabase
             .from("sessao")
@@ -196,10 +223,10 @@ export async function criarSocket(usuario_id, onQr) {
             .single();
 
           if (sessaoReconectar?.logado) {
-            setTimeout(() => criarSocket(usuario_id, onQr), 5000);
+            setTimeout(() => criarSocket(usuario_id, onQr, io), 5000);
           } else {
             console.warn(
-              "🛑 Sessão desativada durante desconexão. Não reconectar."
+              "[Supabase] 🛑 Sessão marcada como deslogada. Não reconectar."
             );
           }
         } else {
@@ -208,11 +235,37 @@ export async function criarSocket(usuario_id, onQr) {
             .update({ conectado: false })
             .eq("usuario_id", usuario_id);
 
-          console.log("🔒 Sessão encerrada e marcada como desconectada.");
+          console.log(
+            "[Supabase] 🔒 Sessão encerrada e marcada como desconectada."
+          );
         }
       }
     }
   );
+
+  // Função separada para aguardar carregamento de contatos
+  async function aguardarContatos(store, timeout = 20000) {
+    const start = Date.now();
+
+    while (
+      Object.keys(store.contacts).length === 0 &&
+      Date.now() - start < timeout
+    ) {
+      console.log("[Baileys] ⏳ Aguardando sincronização dos contatos...");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    const sucesso = Object.keys(store.contacts).length > 0;
+    if (sucesso) {
+      console.log("[Baileys] ✅ Contatos sincronizados com sucesso.");
+    } else {
+      console.warn(
+        "[Baileys] ⚠️ Timeout: contatos não sincronizados após 20s."
+      );
+    }
+
+    return sucesso;
+  }
 
   return sock;
 }

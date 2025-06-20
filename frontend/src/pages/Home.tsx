@@ -1,10 +1,14 @@
-//frontend/src/pages/Home.tsx
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
-import { ChevronDown, ChevronRight } from "lucide-react";
+// frontend/src/pages/Home.tsx
 
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom"; // 1. Importado para navegação idiomática do React
+import { supabase } from "../lib/supabase";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"; // Adicionado ícone de loader
+
+// URL da API importada das variáveis de ambiente
 const BACKEND_URL = import.meta.env.VITE_API_URL;
 
+// Definição de tipos para clareza
 type Contato = {
   id: string;
   nome: string;
@@ -21,6 +25,10 @@ type Membro = { nome: string; numero: string };
 type MembrosPorGrupo = Record<string, Membro[]>;
 
 export default function Home() {
+  const navigate = useNavigate(); // 2. Hook de navegação instanciado
+
+  // Estados do componente
+  const [loading, setLoading] = useState(true); // Estado de carregamento para feedback visual
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [membrosPorGrupo, setMembrosPorGrupo] = useState<MembrosPorGrupo>({});
@@ -33,72 +41,93 @@ export default function Home() {
   const [contatosSelecionados, setContatosSelecionados] = useState<string[]>(
     []
   );
+  const [filtroNome, setFiltroNome] = useState("");
 
+  // Efeito para carregar os dados da página
   useEffect(() => {
     const fetchDados = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const userId = userData.user?.id;
+      try {
+        setLoading(true);
 
-      if (!userId || !token) return;
+        // 1. Recupera informações do usuário e token da sessão
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
 
-      const sessaoRes = await fetch(`${BACKEND_URL}/sessao`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ usuario_id: userId }),
-      });
+        if (!user || !token) {
+          console.warn("Usuário não autenticado. Redirecionando para login.");
+          return navigate("/login");
+        }
 
-      const sessao = await sessaoRes.json();
-      if (!sessao.ativo) {
-        console.warn("Sessão WhatsApp não está ativa");
-        return;
+        // 2. CORREÇÃO: Verifica o status da sessão no backend usando GET
+        const sessaoRes = await fetch(`${BACKEND_URL}/sessao`, {
+          method: "GET", // Método HTTP correto
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          // GET não deve ter body. O backend obtém o ID do usuário a partir do token.
+        });
+
+        if (!sessaoRes.ok) {
+          throw new Error(`Falha ao verificar sessão: ${sessaoRes.statusText}`);
+        }
+
+        const sessao = await sessaoRes.json();
+
+        // 3. CORREÇÃO: Verifica a propriedade 'conectado' e redireciona se necessário
+        if (!sessao.conectado) {
+          console.warn(
+            "Sessão WhatsApp não conectada. Redirecionando para /qr"
+          );
+          return navigate("/qr"); // 4. Navegação correta com useNavigate
+        }
+
+        // 5. Coleta dados de contatos, grupos e membros em paralelo
+        const [contatoRes, grupoRes, membrosRes] = await Promise.all([
+          fetch(`${BACKEND_URL}/contatos?usuario_id=${user.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }).then((res) => res.json()),
+          fetch(`${BACKEND_URL}/grupos?usuario_id=${user.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }).then((res) => res.json()),
+          fetch(`${BACKEND_URL}/membros-grupos?usuario_id=${user.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }).then((res) => res.json()),
+        ]);
+
+        // 6. Armazena os dados no estado do componente
+        setContatos(Array.isArray(contatoRes) ? contatoRes : []);
+        if (!Array.isArray(contatoRes))
+          console.error("Erro ao carregar contatos:", contatoRes?.error);
+
+        setGrupos(Array.isArray(grupoRes) ? grupoRes : []);
+        setMembrosPorGrupo(membrosRes.grupos || {});
+      } catch (err) {
+        console.error("Erro ao carregar dados da Home:", err);
+        // Em um app de produção, aqui poderia ser setado um estado de erro para a UI
+      } finally {
+        setLoading(false); // Garante que o loading termine mesmo se houver erro
       }
-
-      const [contatoRes, grupoRes, membrosRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/contatos?usuario_id=${userId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }).then((res) => res.json()),
-        fetch(`${BACKEND_URL}/grupos?usuario_id=${userId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }).then((res) => res.json()),
-        fetch(`${BACKEND_URL}/membros-grupos?usuario_id=${userId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }).then((res) => res.json()),
-      ]);
-
-      if (Array.isArray(contatoRes)) {
-        setContatos(contatoRes);
-      } else {
-        console.error("Erro ao carregar contatos:", contatoRes?.error);
-        setContatos([]);
-      }
-
-      setGrupos(grupoRes);
-      setMembrosPorGrupo(membrosRes.grupos || {});
     };
 
     fetchDados();
-  }, []);
-
-  const obterNome = (numero: string) => {
-    const contato = contatos.find((c) => c.numero === numero);
-    return contato?.nome || "contato";
-  };
-
-  const toggleGrupo = (jid: string) => {
+  }, [navigate]); // navigate é uma dependência estável
+  // Funções de manipulação da UI (sem alterações)
+  const obterNome = (numero: string) =>
+    contatos.find((c) => c.numero === numero)?.nome || "Contato";
+  const toggleGrupo = (jid: string) =>
     setGruposExpandido((prev) => ({ ...prev, [jid]: !prev[jid] }));
-  };
 
   const selecionarGrupo = (membros: Membro[]) => {
     const numeros = membros.map((m) => m.numero);
     const todosSelecionados = numeros.every((n) =>
       contatosSelecionados.includes(n)
     );
-
     setContatosSelecionados((prev) =>
       todosSelecionados
         ? prev.filter((n) => !numeros.includes(n))
@@ -144,7 +173,14 @@ export default function Home() {
     }
   };
 
-  const [filtroNome, setFiltroNome] = useState("");
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white">
+        <Loader2 className="h-12 w-12 animate-spin text-green-500" />
+        <p className="mt-4 text-lg">Verificando sua sessão e contatos...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white">

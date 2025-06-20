@@ -10,6 +10,6 @@ import { criarSocket } from "./core/socketManager.js";
  * @param {Function} [params.onQr] - Callback para lidar com o QR Code gerado
  * @returns {Promise} Instância do socket
  */
-export async function startLeadTalk({ usuario_id, onQr }) {
-  return criarSocket(usuario_id, onQr);
+export async function startLeadTalk({ usuario_id, onQr, io }) {
+  return criarSocket(usuario_id, onQr, io);
 }

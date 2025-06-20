@@ -1,98 +1,57 @@
-// GitHub/LeadTalksv1/frontend/src/hooks/userQr.ts
+// GitHub/LeadTalksv1/frontend/src/hooks/useQr.ts
 
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useState, useRef } from "react";
+import { supabase } from "../lib/supabase";
 import QRCode from "qrcode";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export function useQr() {
-  const [loading, setLoading] = useState(false);
-  const [statusMsg, setStatusMsg] = useState("");
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const qrCodeRef = useRef<string | null>(null); // Último QR processado
+  const [statusMsg, setStatusMsg] = useState("Aguardando QR...");
+  const qrCodeRef = useRef<string | null>(null);
 
-  // ⚙️ Busca e renderiza o QR Code
-  const carregarQr = useCallback(
-    async (
-      usuario_id: string,
-      canvas?: HTMLCanvasElement,
-      silent: boolean = false
-    ): Promise<boolean> => {
-      if (!silent) {
-        console.log(
-          `[useQr] 🎯 Iniciando busca do QR para usuário: ${usuario_id}`
-        );
-        setLoading(true);
-        setStatusMsg("Buscando QR Code...");
-      }
-
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL}/qr?usuario_id=${usuario_id}`
-        );
-
-        if (!res.ok) throw new Error(`Erro HTTP: ${res.status}`);
-        const data = await res.json();
-
-        if (!data?.qr) {
-          if (!silent) setStatusMsg("QR não encontrado");
-          return false;
-        }
-
-        if (data.qr === qrCodeRef.current) {
-          console.log(
-            "[useQr] ⏭️ QR já processado anteriormente. Ignorando..."
-          );
-          return true;
-        }
-
-        qrCodeRef.current = data.qr;
-        setQrCode(data.qr);
-        if (!silent) setStatusMsg("QR pronto!");
-
-        console.log("[useQr] 📦 QR recebido do backend:", data.qr);
-        if (canvas) {
-          await QRCode.toCanvas(canvas, data.qr);
-          console.log("[useQr] ✅ QR renderizado com sucesso.");
-        }
-
-        return true;
-      } catch (err) {
-        console.error("[useQr] ❌ Erro ao carregar QR:", err);
-        if (!silent) setStatusMsg("Erro ao buscar QR");
-        return false;
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [] // ✅ função independente (sem dependências externas)
-  );
-
-  // 🔁 Polling controlado para buscar o QR em tentativas
   const esperarQrCode = useCallback(
-    async (
-      usuario_id: string,
-      canvas?: HTMLCanvasElement,
-      tentativas = 5,
-      intervalo = 20000
-    ): Promise<boolean> => {
-      for (let i = 0; i < tentativas; i++) {
-        console.log(
-          `[useQr] 🔄 Tentativa ${i + 1}/${tentativas} de buscar QR...`
-        );
-        const ok = await carregarQr(usuario_id, canvas, true);
-        if (ok) return true;
-        await new Promise((res) => setTimeout(res, intervalo));
-      }
-      console.warn("[useQr] ❌ QR não encontrado após polling.");
-      return false;
+    // A função agora retorna o canal para que possa ser limpo depois
+    (usuario_id: string, canvas?: HTMLCanvasElement): RealtimeChannel => {
+      setStatusMsg("Conectando ao Realtime do Supabase...");
+
+      const canal = supabase
+        .channel(`qr-channel-${usuario_id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*", // <-- AJUSTE 1: Escuta INSERT e UPDATE
+            schema: "public",
+            table: "qr",
+            filter: `usuario_id=eq.${usuario_id}`,
+          },
+          async (payload) => {
+            // A lógica para extrair o QR pode ser um pouco diferente para UPDATE
+            const novoQr = (payload.new as { qr: string })?.qr;
+
+            if (!novoQr || novoQr === qrCodeRef.current) return;
+
+            qrCodeRef.current = novoQr;
+
+            if (canvas) {
+              await QRCode.toCanvas(canvas, novoQr);
+              setStatusMsg("QR Code pronto. Escaneie com seu celular.");
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setStatusMsg("Conectado. Aguardando a geração do QR Code...");
+          }
+          console.log("[Supabase Realtime] Canal de QR:", status);
+        });
+
+      return canal; // <-- AJUSTE 2: Retorna a instância do canal
     },
-    [carregarQr] // ✅ depende de função estável
+    []
   );
 
   return {
-    qrCode,
-    carregarQr,
     esperarQrCode,
-    loading,
     statusMsg,
   };
 }

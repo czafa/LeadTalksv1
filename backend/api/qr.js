@@ -1,19 +1,22 @@
 // GitHub/LeadTalksv1/backend/api/qr.js
 
 import { applyCors } from "../lib/cors.js";
-import fetch from "node-fetch";
 import { supabase } from "../lib/supabase.js";
-import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
+/**
+ * Esta API tem a responsabilidade ÚNICA de ler o QR code mais recente
+ * para um usuário do banco de dados.
+ */
 export default async function handler(req, res) {
   console.log("📦 [API /qr] Requisição recebida");
-
+  // CORS
   if (req.method === "OPTIONS") {
     applyCors(res, req);
     return;
   }
   applyCors(res, req);
 
+  // Extrai o ID do usuário da query string
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
 
   const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
@@ -30,64 +33,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔍 Verifica QR recente
-    const { data: qrAtivo, error: erroQr } = await supabase
+    // 1. Consulta o banco de dados para o QR mais recente do usuário
+    const { data: qrData, error } = await supabase
       .from("qr")
-      .select("qr, criado_em")
+      .select("qr") // Seleciona apenas o campo 'qr', que é o que o frontend precisa
       .eq("usuario_id", usuario_id)
       .order("criado_em", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle(); // Retorna um único objeto ou null, evitando erros se não encontrar
 
-    const criadoEmMs = qrAtivo?.criado_em
-      ? new Date(qrAtivo.criado_em).getTime()
-      : 0;
-    const agoraMs = Date.now();
-    const qrAindaValido = criadoEmMs > agoraMs - 30000;
+    // 2. Trata erros na consulta ao banco de dados
+    if (error) {
+      console.error(
+        "[API /qr] ❌ Erro ao buscar QR code no Supabase:",
+        error.message
+      );
+      return res.status(500).json({ error: "Erro interno ao buscar QR code." });
+    }
 
+    // 3. Retorna o QR code encontrado ou null se não houver nenhum
+    // O frontend agora lida com o caso de 'qr: null' e continua tentando (seja via polling ou realtime)
     console.log(
-      `[API /qr] 🔍 QR atual: ${
-        qrAindaValido ? "válido" : "inválido ou ausente"
-      } | criado_em=${qrAtivo?.criado_em || "nenhum"}`
+      `[API /qr] ✅ QR encontrado para ${usuario_id}: ${qrData ? "Sim" : "Não"}`
     );
-
-    // 🔁 Se não houver QR válido, requisita geração no backend
-    if (!qrAindaValido) {
-      const apiUrl = await getNgrokUrl();
-      console.log(`[API /qr] 🔄 Requisitando novo QR via ${apiUrl}/start`);
-
-      const resposta = await fetch(`${apiUrl}/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario_id }),
-      });
-
-      if (!resposta.ok) {
-        console.warn(
-          `[API /qr] ⚠️ Falha ao chamar /start: HTTP ${resposta.status}`
-        );
-      }
-    }
-
-    // 📥 Busca QR do Supabase (após tentar iniciar nova sessão)
-    const { data: qrFinal, error: erroQrFinal } = await supabase
-      .from("qr")
-      .select("qr")
-      .eq("usuario_id", usuario_id)
-      .order("criado_em", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (erroQrFinal) {
-      console.error("[API /qr] ❌ Erro ao buscar QR final:", erroQrFinal);
-      return res.status(500).json({ error: "Erro ao buscar QR code" });
-    }
-
-    return res.status(200).json(qrFinal || { qr: null });
+    return res.status(200).json({ qr: qrData?.qr || null });
   } catch (e) {
-    console.error("❌ [API /qr] Erro inesperado:", e);
+    console.error("❌ [API /qr] Erro inesperado no handler:", e);
     return res
       .status(500)
-      .json({ error: "Erro ao processar requisição de QR" });
+      .json({ error: "Erro ao processar a requisição de QR." });
   }
 }
