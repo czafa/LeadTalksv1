@@ -1,18 +1,15 @@
 // GitHub/LeadTalksv1/frontend/src/pages/QR.tsx
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { useQr } from "../hooks/userQr"; // O hook refatorado com Realtime
+import { useQr } from "../hooks/userQr";
 import io from "socket.io-client";
-
-// Importando tipos para Socket.io e Supabase
 import type { Socket } from "socket.io-client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 /**
  * Aciona o backend para iniciar uma nova sessão de WhatsApp.
- * Esta função permanece a mesma.
  * @param usuario_id - ID do usuário.
  * @param token - Token de acesso do Supabase.
  */
@@ -34,52 +31,62 @@ async function iniciarSessaoBackend(usuario_id: string, token: string) {
       // Idealmente, poderíamos pegar a mensagem de erro do backend aqui
       const erro = await res.json();
       console.error(
-        "[LeadTalk] ❌ Falha ao iniciar sessão no backend:",
+        `[Frontend][QR.tsx][iniciarSessaoBackend] ❌ Falha ao iniciar sessão no backend para ${usuario_id}:`,
         erro.erro || "Erro desconhecido"
       );
       // Aqui você poderia usar um toast ou um estado para mostrar o erro ao usuário
     } else {
-      console.log("[LeadTalk] 🚀 Requisição para iniciar sessão enviada.");
+      console.log(
+        `[Frontend][QR.tsx][iniciarSessaoBackend] 🚀 Requisição enviada para /iniciar-leadtalk para o usuário: ${usuario_id}`
+      );
     }
   } catch (err) {
-    console.error("[LeadTalk] ❌ Erro de rede ao iniciar sessão:", err);
+    console.error(
+      `[Frontend][QR.tsx][iniciarSessaoBackend] ❌ Erro de rede ao chamar /iniciar-leadtalk para ${usuario_id}:`,
+      err
+    );
   }
 }
 
 /**
- * Componente da página de QR Code, agora usando Supabase Realtime.
+ * Componente da página de QR Code usando Supabase Realtime.
  */
 export default function QR() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const navigate = useNavigate();
 
-  // Usamos nosso hook refatorado que retorna a mensagem de status
   const { esperarQrCode, statusMsg } = useQr();
-
+  const [isRedirecting, setIsRedirecting] = useState(false); //Estado para controlar o processo de redirecionamento e evitar limpezas prematuras.
   useEffect(() => {
     // Referências para o canal do Supabase e o socket, para podermos limpá-los depois
     let qrCanal: RealtimeChannel | null = null;
     let socket: Socket | null = null;
 
     async function iniciar() {
+      if (isRedirecting) return; // Previne a execução dupla em Strict Mode se já estivermos redirecionando
+      console.log(
+        "[Frontend][QR.tsx][iniciar] ⚠️ Redirecionamento já em andamento, abortando inicialização duplicada."
+      );
       try {
         // 1. Validação do usuário e da sessão
         const {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) {
-          console.log(
-            "[Auth] Usuário não encontrado, redirecionando para login."
+          console.warn(
+            "[Frontend][QR.tsx][iniciar] ❌ Usuário não autenticado. Redirecionando para /login..."
           );
           return navigate("/login");
         }
 
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
         if (!token) {
-          console.log(
-            "[Auth] Token não encontrado, redirecionando para login."
+          console.warn(
+            "[Frontend][QR.tsx][iniciar] ❌ Token não encontrado. Redirecionando para /login..."
           );
           return navigate("/login");
         }
@@ -89,14 +96,23 @@ export default function QR() {
         // 2. Aciona o backend para começar a gerar o QR
         // Não precisamos de 'await' aqui se quisermos que a escuta comece imediatamente
         iniciarSessaoBackend(usuario_id, token);
+        console.log(
+          `[Frontend][QR.tsx][iniciar] 🚀 Iniciada requisição para /iniciar-leadtalk`
+        );
 
         // 3. Inicia a escuta em tempo real pelo QR Code, sem polling ou setTimeout
         // A função do hook agora nos retorna a instância do canal
+        console.log(
+          "[Frontend][QR.tsx][iniciar] 📡 Subscribing to Supabase channel para QR..."
+        );
         qrCanal = esperarQrCode(usuario_id, canvasRef.current || undefined);
 
         // 4. Busca a URL do socket e estabelece a conexão
         const res = await fetch(`${import.meta.env.VITE_API_URL}/socketUrl`);
         const { socketUrl } = await res.json();
+        console.log(
+          `[Frontend][QR.tsx][iniciar] 🌐 Obtida URL do socket: ${socketUrl}`
+        );
 
         socket = io(socketUrl, {
           transports: ["websocket"],
@@ -105,27 +121,40 @@ export default function QR() {
         socketRef.current = socket; // Guarda a referência para a limpeza
 
         socket.on("connect", () => {
-          console.log("[Socket] 🔌 Conectado ao servidor socket.");
+          console.log("[Frontend][QR.tsx][Socket] 🔌 Conectado ao servidor.");
           socket?.emit("join", usuario_id);
-          console.log(`[Socket] 🎯 Emitido 'join' para a sala: ${usuario_id}`);
+          console.log(
+            `[Frontend][QR.tsx][Socket] 🎯 Emitido 'join' para sala: ${usuario_id}`
+          );
         });
 
         socket.on("connection_open", (payload: { usuario_id: string }) => {
-          if (payload.usuario_id === usuario_id) {
-            console.log("[LeadTalk] ✅ WhatsApp conectado. Redirecionando...");
+          if (payload.usuario_id === usuario_id && !isRedirecting) {
+            console.log(
+              `[Frontend][QR.tsx][Socket] ✅ WhatsApp conectado para ${usuario_id}. Redirecionando para /home...`
+            );
+            setIsRedirecting(true); // sinaliza que estamos saindo da página
             navigate("/home");
           }
         });
 
         socket.on("disconnect", () => {
-          console.warn("[Socket] 🔌 Desconectado do servidor socket.");
+          console.warn(
+            "[Frontend][QR.tsx][Socket] 🔌 Desconectado do servidor."
+          );
         });
 
         socket.on("connect_error", (err) => {
-          console.error("[Socket] ❌ Erro de conexão:", err.message);
+          console.error(
+            "[Frontend][QR.tsx][Socket] ❌ Erro de conexão:",
+            err.message
+          );
         });
       } catch (err) {
-        console.error("[LeadTalk] ❌ Erro fatal no fluxo de QR:", err);
+        console.error(
+          "[Frontend][QR.tsx][iniciar] ❌ Erro fatal na inicialização:",
+          err
+        );
       }
     }
 
@@ -133,19 +162,23 @@ export default function QR() {
 
     // 5. Função de Limpeza (Cleanup) - ESSENCIAL
     return () => {
+      // A limpeza agora só acontece se não estivermos no meio de um redirecionamento.
+      // Isso impede que o React Strict Mode desmonte os sockets antes da navegação.
+      if (isRedirecting) {
+        console.log("[Cleanup] Redirecionamento em progresso, limpeza adiada.");
+        return;
+      }
+
       console.log("[Cleanup] Limpando recursos do componente QR...");
       // Remove a inscrição do canal do Supabase se ele existir
       if (qrCanal) {
         supabase.removeChannel(qrCanal);
-        console.log("[Cleanup] ✅ Inscrição do Supabase Realtime removida.");
       }
-      // Desconecta o socket se ele existir
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        console.log("[Cleanup] ✅ Socket desconectado.");
+      if (socket) {
+        socket.disconnect();
       }
     };
-  }, [esperarQrCode, navigate]); // Dependências do useEffect
+  }, [esperarQrCode, navigate, isRedirecting]); // Dependências do useEffect
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-4">
