@@ -1,11 +1,11 @@
-//GitHub/LeadTalksv1/whatsapp-core/server.js
+// GitHub/LeadTalksv1/whatsapp-core/server.js
 
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
-import { startLeadTalk } from "./leadtalks.js";
+import { criarOuObterSocket } from "./core/socketManager.js";
 import { supabase } from "./supabase.js";
 
 dotenv.config();
@@ -25,134 +25,167 @@ app.use(express.json());
 
 console.log("🔧 Iniciando server.js...");
 
-// 🧠 Multiusuário: gerencia múltiplas sessões simultâneas
-const socketMap = new Map();
-
-/**
- * Centraliza a criação e armazenamento do socket
- */
-async function iniciarSocket(usuario_id) {
-  const socket = await startLeadTalk({
-    usuario_id,
-    onQr: (qr) => {
-      console.log(
-        "[LeadTalk] 📸 QR recebido e sendo processado pelo socketManager."
-      );
-      // A emissão do QR via socket.io pode ser mantida como um fallback,
-      // mas o fluxo principal do frontend usará o Supabase Realtime.
-      io.to(usuario_id).emit("qr", { qr });
-    },
-    io,
-  });
-
-  if (socket) {
-    socketMap.set(usuario_id, socket);
-    return true;
-  }
-
-  return false;
-}
-
-// Rota para msg
+// Rota de envio de mensagem
 app.post("/api/enviar", async (req, res) => {
   const { usuario_id, numero, mensagem } = req.body;
-  const instancia = socketMap.get(usuario_id);
 
-  if (!instancia)
-    return res.status(500).json({ error: "WhatsApp ainda não conectado" });
+  // Usa a própria função para obter a instância
+  const instancia = await criarOuObterSocket(usuario_id, io);
+
+  if (!instancia) {
+    return res
+      .status(500)
+      .json({ error: "WhatsApp não está conectado ou sessão não encontrada." });
+  }
 
   try {
     const jid = `${numero.replace(/[^\d]/g, "")}@s.whatsapp.net`;
     await instancia.sendMessage(jid, { text: mensagem });
     return res.status(200).json({ status: "Mensagem enviada" });
   } catch (err) {
-    return res.status(500).json({ error: "Falha no envio" });
+    console.error("Falha no envio da mensagem:", err);
+    return res.status(500).json({ error: "Falha no envio da mensagem" });
   }
 });
 
-// Rota de Iniciar sessão
 app.post("/start", async (req, res) => {
   const { usuario_id } = req.body;
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+  }
+
+  try {
+    // A lógica de verificação de usuário/sessão foi movida para o core/socketManager.js
+    // O server.js apenas delega a tarefa.
+    console.log(
+      `[Server] Recebida requisição para iniciar sessão para: ${usuario_id}`
+    );
+
+    // Chama a função importada corretamente
+    const socket = await criarOuObterSocket(usuario_id, io);
+
+    if (socket) {
+      return res.status(200).json({ status: "Sessão iniciada ou já ativa." });
+    } else {
+      // Este caso agora é menos provável, pois o connectionManager trata as falhas.
+      return res
+        .status(500)
+        .json({ error: "Falha ao iniciar ou obter a sessão." });
+    }
+  } catch (err) {
+    console.error("Erro crítico no endpoint /start:", err);
+    return res
+      .status(500)
+      .json({ error: "Falha grave ao processar a sessão." });
+  }
+});
+
+// ROTA DE CONTATOS
+app.get("/api/contatos", async (req, res) => {
+  const { usuario_id } = req.query;
+
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("contatos")
+      .select("id, nome, numero")
+      .eq("usuario_id", usuario_id)
+      .order("nome", { ascending: true });
+
+    if (error) {
+      console.error("Erro Supabase ao buscar contatos:", error);
+      return res.status(500).json({ error: "Erro ao buscar contatos" });
+    }
+
+    return res.status(200).json(data);
+  } catch (err) {
+    console.error("Erro fatal ao buscar contatos:", err);
+    return res.status(500).json({ error: "Erro interno no servidor." });
+  }
+});
+
+// ✅ ROTA DE GRUPOS
+app.get("/api/grupos", async (req, res) => {
+  const { usuario_id } = req.query;
   if (!usuario_id)
     return res.status(400).json({ error: "usuario_id é obrigatório" });
 
-  if (socketMap.has(usuario_id)) {
-    console.log(`[LeadTalk] ⚠️ Sessão já ativa para ${usuario_id}`);
-    return res.status(200).json({ status: "Sessão já ativa" });
-  }
-
   try {
-    const { data: usuario, error } = await supabase.auth.admin.getUserById(
-      usuario_id
-    );
-    if (error || !usuario)
-      return res.status(404).json({ error: "Usuário não encontrado" });
-
-    const { data: sessao } = await supabase
-      .from("sessao")
-      .select("logado", "conectado")
+    const { data, error } = await supabase
+      .from("grupos")
+      .select("grupo_jid, nome, tamanho")
       .eq("usuario_id", usuario_id)
-      .single();
+      .order("nome", { ascending: true });
 
-    if (!sessao?.logado)
-      return res.status(403).json({ error: "Usuário não está logado" });
-
-    if (sessao?.conectado === true) {
-      return res.status(200).json({ status: "Sessão já conectada" });
+    if (error) {
+      console.error("Erro Supabase ao buscar grupos:", error);
+      return res.status(500).json({ error: "Erro ao buscar grupos" });
     }
-
-    const sucesso = await iniciarSocket(usuario_id);
-    if (!sucesso)
-      return res.status(500).json({ error: "Falha ao iniciar sessão" });
-
-    return res.status(200).json({ status: "Sessão iniciada com sucesso" });
+    return res.status(200).json(data);
   } catch (err) {
-    console.error("Erro ao iniciar sessão:", err);
-    return res.status(500).json({ error: "Falha ao iniciar sessão" });
+    console.error("Erro fatal ao buscar grupos:", err);
+    return res.status(500).json({ error: "Erro interno no servidor." });
   }
 });
 
-// === Reconectar sessão ===
-async function reconectarSessao() {
+// ✅ ROTA DE MEMBROS DE GRUPOS
+app.get("/api/membros-grupos", async (req, res) => {
+  const { usuario_id } = req.query;
+  if (!usuario_id)
+    return res.status(400).json({ error: "usuario_id é obrigatório" });
+
   try {
     const { data, error } = await supabase
-      .from("sessao")
-      .select("usuario_id")
-      .eq("logado", true)
-      .eq("conectado", false);
+      .from("membros_grupos")
+      .select("grupo_jid, membro_nome, membro_numero")
+      .eq("usuario_id", usuario_id);
 
-    if (error || !data?.length) return;
-
-    for (const sessao of data) {
-      const usuario_id = sessao.usuario_id;
-      console.log(`[LeadTalk] 🔁 Reconectando sessão para ${usuario_id}...`);
-      await iniciarSocket(usuario_id);
+    if (error) {
+      console.error("Erro Supabase ao buscar membros:", error);
+      return res
+        .status(500)
+        .json({ error: "Erro ao buscar membros de grupos" });
     }
-  } catch (err) {
-    console.error("[LeadTalk] ⚠️ Erro ao reconectar sessão:", err.message);
-  }
-}
 
-// Gerenciar entrada nas salas socket por usuario_id
+    // Transforma o array plano em um objeto agrupado por grupo_jid para o frontend
+    const membrosAgrupados = data.reduce((acc, membro) => {
+      const { grupo_jid, membro_nome, membro_numero } = membro;
+      if (!acc[grupo_jid]) {
+        acc[grupo_jid] = [];
+      }
+      acc[grupo_jid].push({ nome: membro_nome, numero: membro_numero });
+      return acc;
+    }, {});
+
+    return res.status(200).json({ grupos: membrosAgrupados });
+  } catch (err) {
+    console.error("Erro fatal ao buscar membros:", err);
+    return res.status(500).json({ error: "Erro interno no servidor." });
+  }
+});
+
+// --- FIM DA DEFINIÇÃO DE ROTAS ---
+
+// Gerenciamento de salas do Socket.IO (sem alterações)
 io.on("connection", (socket) => {
   socket.on("join", (usuario_id) => {
     socket.join(usuario_id);
-    console.log(`[Socket] ✅ Usuário ${usuario_id} entrou na sala`);
+    console.log(`[Socket.IO] Cliente entrou na sala: ${usuario_id}`);
   });
 
   socket.on("disconnect", () => {
-    console.log("[Socket] 🔌 Socket desconectado");
+    console.log("[Socket.IO] Cliente desconectado");
   });
 });
 
+// ✅ O SERVIDOR SÓ COMEÇA A ESCUTAR DEPOIS DE TODAS AS ROTAS SEREM DEFINIDAS
 server.listen(3001, () => {
-  console.log("Servidor local do WhatsApp rodando na porta 3001.");
-  reconectarSessao();
+  console.log(
+    "🚀 Servidor WhatsApp reativo rodando na porta 3001. Aguardando requisições..."
+  );
 });
-
-// Para testes ou reinicializações forçadas
-export function getSocketInstance(usuario_id) {
-  return socketMap.get(usuario_id);
-}
 
 import "./filaProcessor.js";

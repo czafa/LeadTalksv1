@@ -1,185 +1,184 @@
-// GitHub/LeadTalksv1/whatsapp-core/core/socketManager.js
+// whatsapp-core/core/socketManager.js
 
 import {
   makeWASocket,
   useMultiFileAuthState,
-  makeInMemoryStore,
   DisconnectReason,
+  makeInMemoryStore,
 } from "@whiskeysockets/baileys";
-
 import pino from "pino";
 import fs from "fs";
 import path from "path";
+import { Boom } from "@hapi/boom";
 import { supabase } from "../supabase.js";
 import { salvarQrNoSupabase } from "./qrManager.js";
-import {
-  exportarContatos,
-  exportarGruposESuasPessoas,
-} from "./exportadores.js";
+import { sincronizarContatosEmBackground } from "./syncTasks.js";
 
-const DATA_DIR = "./data";
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+const logger = pino({ level: "trace" });
+const store = makeInMemoryStore({ logger });
+store?.readFromFile("./baileys_store.json");
+setInterval(() => {
+  store?.writeToFile("./baileys_store.json");
+}, 10_000);
 
-const store = makeInMemoryStore({ logger: pino({ level: "silent" }) }); // pode usar silent ou trace para maiores infos
+const activeSockets = new Map();
 
-async function sincronizarContatosEmBackground(sock, store, usuario_id) {
-  console.log("[BG Sync] 🔄 Sincronizando contatos em segundo plano...");
-
-  async function aguardarContatos(store, timeout = 30000) {
-    const start = Date.now();
-    while (
-      Object.keys(store.contacts).length === 0 &&
-      Date.now() - start < timeout
-    ) {
-      console.log("[BG Sync] ⏳ Aguardando contatos...");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-    return Object.keys(store.contacts).length > 0;
-  }
-
+async function updateSessionStatus(usuario_id, isConnected) {
   try {
-    if (await aguardarContatos(store)) {
-      await exportarContatos(store, usuario_id);
-      await exportarGruposESuasPessoas(sock, store, usuario_id);
-      console.log("[BG Sync] ✅ Exportações concluídas.");
+    const { error } = await supabase
+      .from("sessao")
+      .update({
+        conectado: isConnected,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("usuario_id", usuario_id);
+
+    if (error) {
+      logger.error(
+        { usuario_id, error },
+        "Falha ao atualizar status da sessão no Supabase"
+      );
     } else {
-      console.warn("[BG Sync] ⚠️ Timeout: contatos não sincronizados.");
+      logger.info(
+        { usuario_id, isConnected },
+        "Status da sessão atualizado no Supabase"
+      );
     }
   } catch (err) {
-    console.error("[BG Sync] ❌ Erro na sincronização:", err);
+    logger.error(
+      { usuario_id, err },
+      "Erro catastrófico ao atualizar status da sessão"
+    );
   }
 }
 
-export async function criarSocket(usuario_id, onQr, io) {
-  const { data: sessao } = await supabase
-    .from("sessao")
-    .select("logado, conectado")
-    .eq("usuario_id", usuario_id)
-    .single();
+function clearAuthData(usuario_id) {
+  const authDir = path.join("./auth", usuario_id);
+  if (fs.existsSync(authDir)) {
+    fs.rmSync(authDir, { recursive: true, force: true });
+    logger.info({ usuario_id }, "Dados de autenticação locais limpos.");
+  }
+  activeSockets.delete(usuario_id);
+}
 
-  if (!sessao?.logado) {
-    console.warn(`[LeadTalk] ❌ Sessão não logada para ${usuario_id}.`);
-    return null;
+export async function criarOuObterSocket(usuario_id, io) {
+  if (activeSockets.has(usuario_id)) {
+    logger.info(
+      { usuario_id },
+      "Socket já existente encontrado. Retornando instância ativa."
+    );
+    return activeSockets.get(usuario_id);
   }
 
-  if (sessao?.conectado) {
-    console.warn(`[LeadTalk] ⚠️ Sessão já conectada para ${usuario_id}.`);
-    return null;
+  const authDir = path.join("./auth", usuario_id);
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
   }
 
-  const pastaUsuario = path.join("./auth", usuario_id);
-  if (!fs.existsSync(pastaUsuario)) {
-    fs.mkdirSync(pastaUsuario, { recursive: true });
-  }
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-  const { state, saveCreds } = await useMultiFileAuthState(pastaUsuario);
-
+  // ✅ INÍCIO DA CORREÇÃO DEFINITIVA
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
-    logger: pino({ level: "silent" }), // Usar 'silent' em produção
+    printQRInTerminal: process.env.NODE_ENV !== "production",
+    logger,
     syncFullHistory: false,
+
+    // CORREÇÃO 1: Fornece um valor de array válido para o browser
+    browser: ["LeadTalks", "Chrome", "114.0.0"],
+
+    // CORREÇÃO 2: Sintaxe JS pura e segura para getMessage
+    getMessage: async (key) => {
+      if (store) {
+        const msg = await store.loadMessage(key.remoteJid, key.id);
+        return msg?.message || undefined;
+      }
+      // Retorna uma mensagem vazia se o store não estiver disponível
+      return { conversation: "" };
+    },
   });
+  // ✅ FIM DA CORREÇÃO DEFINITIVA
 
   store.bind(sock.ev);
+  activeSockets.set(usuario_id, sock);
+
   sock.ev.on("creds.update", saveCreds);
 
-  let foiConectadoRecentemente = false;
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
-      if (qr && usuario_id) {
-        console.log("[Baileys] 📸 QR gerado.");
-        await salvarQrNoSupabase(qr, usuario_id);
-        onQr?.(qr);
-      }
+    if (qr) {
+      logger.info({ usuario_id }, "QR Code gerado.");
+      await salvarQrNoSupabase(qr, usuario_id);
+    }
 
-      if (connection === "open") {
-        console.log("[Baileys] ✅ Conexão estável estabelecida.");
-        foiConectadoRecentemente = true;
+    if (connection === "open") {
+      logger.info({ usuario_id }, "Conexão WhatsApp estabelecida com sucesso.");
+      await updateSessionStatus(usuario_id, true);
+      await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+      io?.to(usuario_id).emit("connection_open", { usuario_id });
+      sincronizarContatosEmBackground(sock, store, usuario_id);
+    }
 
-        try {
-          await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+    if (connection === "close") {
+      const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      logger.warn({ usuario_id, reason }, "Conexão WhatsApp fechada.");
+      activeSockets.delete(usuario_id);
 
-          const { data: updatedData, error } = await supabase
-            .from("sessao")
-            .update({
-              conectado: true,
-              atualizado_em: new Date().toISOString(),
-            })
-            .eq("usuario_id", usuario_id)
-            .select()
-            .single();
+      switch (reason) {
+        case DisconnectReason.loggedOut:
+          logger.warn({ usuario_id }, "Usuário deslogado. Limpando sessão.");
+          await updateSessionStatus(usuario_id, false);
+          clearAuthData(usuario_id);
+          break;
 
-          if (error || !updatedData) {
-            console.error(
-              "[Supabase] ❌ Falha ao atualizar conectado = true",
-              error
-            );
-            await sock.logout();
-            return;
-          }
-
-          console.log("[Supabase] ✅ conectado = true salvo com sucesso.");
-          io?.to(usuario_id).emit("connection_open", { usuario_id });
-          sincronizarContatosEmBackground(sock, store, usuario_id);
-        } catch (err) {
-          console.error(
-            "[LeadTalk] ❌ Erro inesperado no 'connection: open':",
-            err
+        case DisconnectReason.restartRequired:
+          logger.info(
+            { usuario_id },
+            "Reinício necessário. Recriando socket..."
           );
-        }
-      }
+          criarOuObterSocket(usuario_id, io);
+          break;
 
-      if (connection === "close") {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-
-        if (foiConectadoRecentemente) {
-          console.warn(
-            `[DEBUG] ⚠️ Atenção: conexão foi aberta e logo fechada. statusCode: ${statusCode}, usuario_id: ${usuario_id}`
+        case DisconnectReason.timedOut:
+        case DisconnectReason.connectionLost:
+        case DisconnectReason.connectionClosed:
+          logger.info(
+            { usuario_id, reason },
+            "Conexão perdida. Tentando reconectar..."
           );
-        }
+          await updateSessionStatus(usuario_id, false);
+          criarOuObterSocket(usuario_id, io);
+          break;
 
-        const deveMarcarDesconectado =
-          statusCode !== DisconnectReason.restartRequired &&
-          statusCode !== DisconnectReason.timedOut &&
-          statusCode !== DisconnectReason.connectionClosed &&
-          statusCode !== DisconnectReason.connectionLost;
-
-        if (deveMarcarDesconectado) {
-          await supabase
-            .from("sessao")
-            .update({ conectado: false })
-            .eq("usuario_id", usuario_id);
-          console.log(`[Baileys] 🔌 Sessão marcada como desconectada.`);
-        } else {
-          console.log(
-            `[Baileys] ℹ️ Reinício esperado. Sessão NÃO marcada como desconectada.`
+        case DisconnectReason.badSession:
+          logger.error(
+            { usuario_id },
+            "Sessão inválida. Limpando dados de autenticação."
           );
-        }
+          await updateSessionStatus(usuario_id, false);
+          clearAuthData(usuario_id);
+          criarOuObterSocket(usuario_id, io);
+          break;
 
-        switch (statusCode) {
-          case DisconnectReason.restartRequired:
-            console.log(`[Baileys] 🔄 Reiniciando conexão...`);
-            criarSocket(usuario_id, onQr, io);
-            break;
+        case DisconnectReason.connectionReplaced:
+          logger.warn(
+            { usuario_id },
+            "Conexão substituída. Encerrando esta sessão."
+          );
+          await updateSessionStatus(usuario_id, false);
+          break;
 
-          case DisconnectReason.loggedOut:
-            console.log(`[Baileys] 🛑 Deslogado. Limpando credenciais.`);
-            const pastaAuth = path.join("./auth", usuario_id);
-            if (fs.existsSync(pastaAuth)) {
-              fs.rmSync(pastaAuth, { recursive: true, force: true });
-            }
-            break;
-
-          default:
-            console.log(`[Baileys] ⚠️ Tentando reconectar em 15s...`);
-            setTimeout(() => criarSocket(usuario_id, onQr, io), 15000);
-        }
+        default:
+          logger.error(
+            { usuario_id, reason },
+            "Razão de desconexão não tratada. Encerrando."
+          );
+          await updateSessionStatus(usuario_id, false);
+          break;
       }
     }
-  );
+  });
 
   return sock;
 }

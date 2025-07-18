@@ -1,33 +1,38 @@
+// GitHub/LeadTalksv1/backend/api/membros-grupos.js
+
 import { applyCors } from "../lib/cors.js";
-import { supabase } from "../lib/supabase.js";
+import { validarRequisicaoSessao } from "../lib/secureRequest.js";
+import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
   if (applyCors(res, req)) return;
 
-  const { usuario_id } = req.query;
-
-  if (!usuario_id)
-    return res.status(400).json({ error: "usuario_id é obrigatório" });
-
-  const { data, error } = await supabase
-    .from("membros_grupos")
-    .select("grupo_jid, membro_nome, membro_numero")
-    .eq("usuario_id", usuario_id);
-
-  if (error) {
-    console.error("Erro Supabase membros_grupos:", error);
-    return res.status(500).json({ error: "Erro ao buscar membros dos grupos" });
+  const validacao = await validarRequisicaoSessao(req);
+  if (!validacao.autorizado) {
+    return res.status(401).json({ erro: "Não autorizado" });
   }
+  const { usuario_id } = validacao;
 
-  // Agrupar por grupo_jid
-  const agrupado = {};
-  data.forEach((membro) => {
-    if (!agrupado[membro.grupo_jid]) agrupado[membro.grupo_jid] = [];
-    agrupado[membro.grupo_jid].push({
-      nome: membro.membro_nome,
-      numero: membro.membro_numero,
-    });
-  });
+  try {
+    const ngrokUrl = await getNgrokUrl();
+    if (!ngrokUrl) {
+      return res.status(503).json({ erro: "Serviço de conexão indisponível." });
+    }
 
-  return res.status(200).json({ grupos: agrupado });
+    const resposta = await fetch(
+      `${ngrokUrl}/api/membros-grupos?usuario_id=${usuario_id}`
+    );
+
+    if (!resposta.ok) {
+      return res
+        .status(resposta.status)
+        .json({ erro: "Falha ao buscar membros no serviço principal." });
+    }
+
+    const dados = await resposta.json();
+    return res.status(200).json(dados);
+  } catch (error) {
+    console.error("Erro no proxy de membros-grupos:", error);
+    return res.status(500).json({ erro: "Erro interno no servidor." });
+  }
 }
