@@ -5,6 +5,11 @@ import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
+  // ✅ INÍCIO CORS
+  if (req.method === "OPTIONS") {
+    applyCors(res, req);
+    return;
+  }
   if (applyCors(res, req)) return;
 
   if (req.method !== "POST") {
@@ -57,11 +62,9 @@ export default async function handler(req, res) {
       console.error(
         "[LeadTalk] ❌ URL do backend local (ngrok) não foi encontrada no banco."
       );
-      return res
-        .status(503)
-        .json({
-          erro: "Serviço de conexão temporariamente indisponível. (URL não configurada)",
-        });
+      return res.status(503).json({
+        erro: "Serviço de conexão temporariamente indisponível. (URL não configurada)",
+      });
     }
 
     try {
@@ -96,11 +99,9 @@ export default async function handler(req, res) {
     }
 
     // retorna para o frontend
-    return res
-      .status(200)
-      .json({
-        status: "Requisição para iniciar a conexão enviada com sucesso.",
-      });
+    return res.status(200).json({
+      status: "Requisição para iniciar a conexão enviada com sucesso.",
+    });
   } catch (err) {
     console.error("[LeadTalk] ❌ Erro inesperado no handler:", err);
     return res.status(500).json({ erro: "Erro interno no servidor." });

@@ -4,6 +4,11 @@ import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 
 export default async function handler(req, res) {
+  // INÍCIO CORS
+  if (req.method === "OPTIONS") {
+    applyCors(res, req);
+    return;
+  }
   console.log("Origin recebida:", req.headers.origin);
   console.log("Ambiente:", process.env.NODE_ENV);
 

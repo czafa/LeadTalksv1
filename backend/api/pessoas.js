@@ -5,6 +5,11 @@ import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
+  // ✅ INÍCIO DA CORREÇÃO DE CORS
+  if (req.method === "OPTIONS") {
+    applyCors(res, req);
+    return;
+  }
   // 1. Aplica as regras de CORS
   if (applyCors(res, req)) return;
 
@@ -30,11 +35,9 @@ export default async function handler(req, res) {
     );
 
     if (!resposta.ok) {
-      return res
-        .status(resposta.status)
-        .json({
-          erro: "Falha ao buscar a lista de pessoas no serviço principal.",
-        });
+      return res.status(resposta.status).json({
+        erro: "Falha ao buscar a lista de pessoas no serviço principal.",
+      });
     }
 
     const dados = await resposta.json();

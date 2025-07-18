@@ -5,6 +5,11 @@ import { getUserIdFromRequest } from "../lib/auth.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
+  // ✅ INÍCIO CORS
+  if (req.method === "OPTIONS") {
+    applyCors(res, req);
+    return;
+  }
   if (applyCors(res, req)) return; // 🌐 Middleware centralizado
 
   if (req.method !== "POST") {
