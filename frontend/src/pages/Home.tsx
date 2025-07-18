@@ -1,8 +1,8 @@
 // frontend/src/pages/Home.tsx
 
+import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom"; // 1. Importado para navegação idiomática do React
-import { supabase } from "../lib/supabase";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"; // Adicionado ícone de loader
 
 // URL da API importada das variáveis de ambiente
@@ -25,6 +25,7 @@ type Membro = { nome: string; numero: string };
 type MembrosPorGrupo = Record<string, Membro[]>;
 
 export default function Home() {
+  const supabase = useSupabaseClient();
   const navigate = useNavigate(); // 2. Hook de navegação instanciado
 
   // Estados do componente
@@ -116,7 +117,7 @@ export default function Home() {
     };
 
     fetchDados();
-  }, [navigate]); // navigate é uma dependência estável
+  }, [supabase, navigate]); // navigate é uma dependência estável
   // Funções de manipulação da UI (sem alterações)
   const obterNome = (numero: string) =>
     contatos.find((c) => c.numero === numero)?.nome || "Contato";

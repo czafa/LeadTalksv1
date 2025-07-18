@@ -1,4 +1,5 @@
 .
+├── GEMINI.md
 ├── README.md
 ├── backend
 │   ├── api
@@ -8,24 +9,28 @@
 │   │   ├── iniciar-leadtalk.js
 │   │   ├── membros-grupos.js
 │   │   ├── qr.js
-│   │   └── sessao.js
+│   │   ├── sessao.js
+│   │   └── socketUrl.js
 │   ├── index.js
 │   ├── lib
+│   │   ├── auth.js
 │   │   ├── cors.js
+│   │   ├── getNgrokUrl.js
+│   │   ├── secureRequest.js
 │   │   └── supabase.js
-│   ├── node_modules
-
 │   ├── package-lock.json
 │   ├── package.json
 │   └── vercel.json
+├── estrutura.txt
 ├── estrutural3.txt
 ├── frontend
 │   ├── README.md
+│   ├── dist
+│   │   ├── assets
+│   │   ├── index.html
+│   │   └── vite.svg
 │   ├── eslint.config.js
-│   ├── index.css
 │   ├── index.html
-│   ├── node_modules
-
 │   ├── package-lock.json
 │   ├── package.json
 │   ├── postcss.config.js
@@ -41,6 +46,7 @@
 │   │   ├── lib
 │   │   ├── main.tsx
 │   │   ├── pages
+│   │   ├── pasta src (front).txt
 │   │   ├── utils
 │   │   └── vite-env.d.ts
 │   ├── tailwind.config.ts
@@ -55,19 +61,22 @@
     │   ├── enviar.js
     │   └── start-session.js
     ├── auth
-
+    ├── core
+    │   ├── exportadores.js
+    │   ├── qrManager.js
+    │   ├── socket.js
+    │   ├── socketManager.js
+    │   └── supabaseSync.js
     ├── data
-    │   └── store.json
+    ├── filaProcessor.js
     ├── leadtalks.js
     ├── ngrok-sync.js
-    ├── node_modules
-
     ├── package-lock.json
     ├── package.json
-    ├── qrStore.js
+    ├── saida_concatenada.txt
+    ├── sender.js
     ├── server.js
     ├── start-server.js
-    ├── supabase.js
-    └── temp
+    └── supabase.js
 
-547 directories, 174 files
+20 directories, 60 files

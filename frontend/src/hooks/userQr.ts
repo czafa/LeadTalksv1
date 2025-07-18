@@ -1,31 +1,33 @@
 // GitHub/LeadTalksv1/frontend/src/hooks/useQr.ts
 
+// ✅ 1. Importe o hook do auth-helpers
+import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useCallback, useState, useRef } from "react";
-import { supabase } from "../lib/supabase";
 import QRCode from "qrcode";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export function useQr() {
+  // ✅ 3. Obtenha a instância correta do Supabase via hook
+  const supabase = useSupabaseClient();
   const [statusMsg, setStatusMsg] = useState("Aguardando QR...");
   const qrCodeRef = useRef<string | null>(null);
 
   const esperarQrCode = useCallback(
-    // A função agora retorna o canal para que possa ser limpo depois
     (usuario_id: string, canvas?: HTMLCanvasElement): RealtimeChannel => {
       setStatusMsg("Conectando ao Realtime do Supabase...");
 
-      const canal = supabase
+      const canal = supabase // Agora usa a instância correta
         .channel(`qr-channel-${usuario_id}`)
         .on(
           "postgres_changes",
           {
-            event: "*", // <-- AJUSTE 1: Escuta INSERT e UPDATE
+            event: "*",
             schema: "public",
             table: "qr",
             filter: `usuario_id=eq.${usuario_id}`,
           },
           async (payload) => {
-            // A lógica para extrair o QR pode ser um pouco diferente para UPDATE
+            console.log("[useQr] Payload recebido:", payload); // Ótimo para depuração!
             const novoQr = (payload.new as { qr: string })?.qr;
 
             if (!novoQr || novoQr === qrCodeRef.current) return;
@@ -42,12 +44,12 @@ export function useQr() {
           if (status === "SUBSCRIBED") {
             setStatusMsg("Conectado. Aguardando a geração do QR Code...");
           }
-          console.log("[Supabase Realtime] Canal de QR:", status);
+          console.log("[Supabase Realtime][useQr] Canal de QR:", status);
         });
 
-      return canal; // <-- AJUSTE 2: Retorna a instância do canal
+      return canal;
     },
-    []
+    [supabase] // ✅ 4. Adicione 'supabase' como dependência do useCallback
   );
 
   return {

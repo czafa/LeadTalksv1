@@ -1,8 +1,8 @@
 // GitHub/LeadTalksv1/frontend/src/pages/QR.tsx
 
+import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
 import { useQr } from "../hooks/userQr";
 import io from "socket.io-client";
 import type { Socket } from "socket.io-client";
@@ -52,6 +52,7 @@ async function iniciarSessaoBackend(usuario_id: string, token: string) {
  * Componente da página de QR Code usando Supabase Realtime.
  */
 export default function QR() {
+  const supabase = useSupabaseClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const navigate = useNavigate();
@@ -178,7 +179,7 @@ export default function QR() {
         socket.disconnect();
       }
     };
-  }, [esperarQrCode, navigate, isRedirecting]); // Dependências do useEffect
+  }, [supabase, esperarQrCode, navigate, isRedirecting]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-4">

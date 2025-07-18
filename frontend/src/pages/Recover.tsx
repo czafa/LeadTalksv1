@@ -1,8 +1,11 @@
+// GitHub/LeadTalksv1/frontend/src/pages/Recover.tsx
+
+import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
 import { Link } from "react-router-dom";
 
 export default function Recover() {
+  const supabase = useSupabaseClient();
   const [email, setEmail] = useState("");
   const [sucesso, setSucesso] = useState("");
   const [erro, setErro] = useState("");

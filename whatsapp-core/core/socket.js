@@ -20,7 +20,7 @@ import {
 const DATA_DIR = "./data";
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
-const store = makeInMemoryStore({ logger: pino({ level: "silent" }) }); // pode usar silent ou trace para maiores infos
+const store = makeInMemoryStore({ logger: pino({ level: "trace" }) });
 
 async function sincronizarContatosEmBackground(sock, store, usuario_id) {
   console.log("[BG Sync] 🔄 Sincronizando contatos em segundo plano...");
@@ -84,8 +84,6 @@ export async function criarSocket(usuario_id, onQr, io) {
   store.bind(sock.ev);
   sock.ev.on("creds.update", saveCreds);
 
-  let foiConectadoRecentemente = false;
-
   sock.ev.on(
     "connection.update",
     async ({ connection, qr, lastDisconnect }) => {
@@ -95,88 +93,66 @@ export async function criarSocket(usuario_id, onQr, io) {
         onQr?.(qr);
       }
 
-      if (connection === "open") {
-        console.log("[Baileys] ✅ Conexão estável estabelecida.");
-        foiConectadoRecentemente = true;
-
-        try {
-          await supabase.from("qr").delete().eq("usuario_id", usuario_id);
-
-          const { data: updatedData, error } = await supabase
-            .from("sessao")
-            .update({
-              conectado: true,
-              atualizado_em: new Date().toISOString(),
-            })
-            .eq("usuario_id", usuario_id)
-            .select()
-            .single();
-
-          if (error || !updatedData) {
-            console.error(
-              "[Supabase] ❌ Falha ao atualizar conectado = true",
-              error
-            );
-            await sock.logout();
-            return;
-          }
-
-          console.log("[Supabase] ✅ conectado = true salvo com sucesso.");
-          io?.to(usuario_id).emit("connection_open", { usuario_id });
-          sincronizarContatosEmBackground(sock, store, usuario_id);
-        } catch (err) {
-          console.error(
-            "[LeadTalk] ❌ Erro inesperado no 'connection: open':",
-            err
-          );
-        }
-      }
-
       if (connection === "close") {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
 
-        if (foiConectadoRecentemente) {
-          console.warn(
-            `[DEBUG] ⚠️ Atenção: conexão foi aberta e logo fechada. statusCode: ${statusCode}, usuario_id: ${usuario_id}`
-          );
-        }
-
-        const deveMarcarDesconectado =
-          statusCode !== DisconnectReason.restartRequired &&
-          statusCode !== DisconnectReason.timedOut &&
-          statusCode !== DisconnectReason.connectionClosed &&
-          statusCode !== DisconnectReason.connectionLost;
-
-        if (deveMarcarDesconectado) {
-          await supabase
-            .from("sessao")
-            .update({ conectado: false })
-            .eq("usuario_id", usuario_id);
-          console.log(`[Baileys] 🔌 Sessão marcada como desconectada.`);
-        } else {
-          console.log(
-            `[Baileys] ℹ️ Reinício esperado. Sessão NÃO marcada como desconectada.`
-          );
-        }
+        // Sempre marca como desconectado no banco quando a conexão fecha
+        await supabase
+          .from("sessao")
+          .update({ conectado: false })
+          .eq("usuario_id", usuario_id);
+        console.log(
+          `[Baileys] 🔌 Conexão fechada. Status: ${statusCode}. Sessão marcada como desconectada.`
+        );
 
         switch (statusCode) {
+          // CORRETO: A conexão foi estabelecida via QR, precisa reiniciar o socket.
           case DisconnectReason.restartRequired:
-            console.log(`[Baileys] 🔄 Reiniciando conexão...`);
+            console.log(
+              "[Baileys] 🔄 Reiniciando conexão após scan do QR (restartRequired)."
+            );
             criarSocket(usuario_id, onQr, io);
             break;
 
+          // CORRETO: Logout explícito, não reconectar.
           case DisconnectReason.loggedOut:
-            console.log(`[Baileys] 🛑 Deslogado. Limpando credenciais.`);
+            console.log(
+              "[Baileys] 🛑 Usuário deslogado (loggedOut). Limpando credenciais."
+            );
             const pastaAuth = path.join("./auth", usuario_id);
             if (fs.existsSync(pastaAuth)) {
               fs.rmSync(pastaAuth, { recursive: true, force: true });
             }
             break;
 
+          // Para todos os outros casos (timeout, erro de rede, etc.), tenta reconectar.
           default:
-            console.log(`[Baileys] ⚠️ Tentando reconectar em 15s...`);
+            console.log(`[Baileys] ⚠️ Tentando reconectar em 15 segundos...`);
             setTimeout(() => criarSocket(usuario_id, onQr, io), 15000);
         }
+      }
+
+      // CORRIGIDO: Lógica de 'open' simplificada e direta.
+      if (connection === "open") {
+        console.log("[Baileys] ✅ Conexão estável estabelecida.");
+
+        // Ações de sucesso
+        await supabase.from("qr").delete().eq("usuario_id", usuario_id);
+        await supabase
+          .from("sessao")
+          .update({ conectado: true, atualizado_em: new Date().toISOString() })
+          .eq("usuario_id", usuario_id);
+
+        console.log("[Supabase] ✅ Sessão marcada como conectada.");
+
+        io?.to(usuario_id).emit("connection_open", { usuario_id });
+        console.log(
+          `[Socket] 🔔 Evento 'connection_open' emitido para ${usuario_id}`
+        );
+
+        // Inicia tarefas pesadas em segundo plano, sem bloquear
+        sincronizarContatosEmBackground(sock, store, usuario_id);
+        console.log("[Baileys] ✅ Conexão validada e estável.");
       }
     }
   );

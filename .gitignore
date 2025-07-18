@@ -36,3 +36,4 @@ pnpm-debug.log*
 *.key:Zone.Identifier
 ssh-key-*
 
+GEMINI.md
