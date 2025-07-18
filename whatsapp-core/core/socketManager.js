@@ -12,7 +12,7 @@ import path from "path";
 import { Boom } from "@hapi/boom";
 import { supabase } from "../supabase.js";
 import { salvarQrNoSupabase } from "./qrManager.js";
-import { sincronizarContatosEmBackground } from "./syncTasks.js";
+import { sincronizarContatosEmBackground } from "./exportadores.js";
 
 const logger = pino({ level: "trace" });
 const store = makeInMemoryStore({ logger });

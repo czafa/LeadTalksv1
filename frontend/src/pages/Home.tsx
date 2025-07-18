@@ -89,22 +89,29 @@ export default function Home() {
         }
 
         // 5. Coleta dados de contatos, grupos e membros em paralelo
-        const [contatoRes, grupoRes, membrosRes] = await Promise.all([
-          fetch(`${BACKEND_URL}/contatos?usuario_id=${user.id}`, {
+        // ✅ PASSO FINAL: Busca a nova lista unificada de 'pessoas'
+        const [pessoasRes, grupoRes, membrosRes] = await Promise.all([
+          // ALTERADO: Busca da nova rota unificada
+          fetch(`${BACKEND_URL}/api/pessoas?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
-          fetch(`${BACKEND_URL}/grupos?usuario_id=${user.id}`, {
+
+          // MANTIDO: Ainda precisamos da lista de grupos para a UI
+          fetch(`${BACKEND_URL}/api/grupos?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
-          fetch(`${BACKEND_URL}/membros-grupos?usuario_id=${user.id}`, {
+
+          // MANTIDO: Ainda precisamos dos membros para expandir os grupos
+          fetch(`${BACKEND_URL}/api/membros-grupos?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
         ]);
 
         // 6. Armazena os dados no estado do componente
-        setContatos(Array.isArray(contatoRes) ? contatoRes : []);
-        if (!Array.isArray(contatoRes))
-          console.error("Erro ao carregar contatos:", contatoRes?.error);
+        // A variável de estado 'contatos' agora conterá todas as pessoas (contatos + membros)
+        setContatos(Array.isArray(pessoasRes) ? pessoasRes : []);
+        if (!Array.isArray(pessoasRes))
+          console.error("Erro ao carregar pessoas:", pessoasRes?.error);
 
         setGrupos(Array.isArray(grupoRes) ? grupoRes : []);
         setMembrosPorGrupo(membrosRes.grupos || {});
@@ -236,7 +243,7 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {/* 🧑 Contatos */}
         <div className="w-full md:w-1/2 border-r border-gray-700 overflow-y-auto p-4">
-          <h2 className="text-lg font-semibold mb-4">Contatos</h2>
+          <h2 className="text-lg font-semibold mb-4">Contatos e Membros</h2>
           <ul className="space-y-2">
             {contatos
               .filter((contato) =>

@@ -6,7 +6,8 @@ import { upsertContatos, upsertGrupos, upsertMembros } from "./supabaseSync.js";
  */
 export async function exportarContatos(store, usuario_id) {
   const contatos = Object.entries(store.contacts).map(([jid, contato]) => ({
-    nome: contato.name || contato.notify || contato.pushname || jid,
+    nome:
+      contato.name || contato.notify || contato.pushname || jid.split("@")[0],
     numero: jid.split("@")[0],
     tipo: jid.includes("@g.us") ? "grupo" : "contato",
     usuario_id,
@@ -33,12 +34,13 @@ export async function exportarContatos(store, usuario_id) {
   console.log(
     `[LeadTalk] 📱 ${todos.length} contatos salvos para ${usuario_id}`
   );
-
   await upsertContatos(todos);
+
+  return todos; // <== ADICIONAR ESTA LINHA
 }
 
 /**
- * Exporta grupos e membros para arquivo local e Supabase.
+ * Exporta grupos e membros, cruzando informações para obter nomes.
  */
 export async function exportarGruposESuasPessoas(sock, store, usuario_id) {
   const grupos = store.chats.all().filter((chat) => chat.id.endsWith("@g.us"));
@@ -57,76 +59,75 @@ export async function exportarGruposESuasPessoas(sock, store, usuario_id) {
         usuario_id,
       });
 
-      membrosPorGrupo[metadata.id] = metadata.participants.map((p) => ({
-        numero: p.id.split("@")[0],
-        jid: p.id,
-        grupo_jid: metadata.id,
-        grupo_nome: metadata.subject,
-        membro_nome: p.id.split("@")[0],
-        membro_numero: p.id.split("@")[0],
-        admin: p.admin || false,
+      // LÓGICA DE MEMBROS
+      membrosPorGrupo[metadata.id] = metadata.participants.map((p) => {
+        const numero = p.id.split("@")[0];
+
+        // O 'baileys' não fornece pushname diretamente na lista de participantes.
+        // A abordagem correta continua sendo cruzar com o 'store.contacts'.
+        const contatoInfo = store.contacts[p.id];
+
+        // Ordem de prioridade: 1. Nome salvo, 2. Pushname, 3. Número
+        const nomeFinal =
+          contatoInfo?.name ||
+          contatoInfo?.notify ||
+          contatoInfo?.pushname ||
+          numero;
+
+        return {
+          numero: numero,
+          jid: p.id,
+          grupo_jid: metadata.id,
+          grupo_nome: metadata.subject,
+          membro_nome: nomeFinal, // Usa o nome encontrado na ordem de prioridade
+          membro_numero: numero,
+          admin: p.admin === "admin" || p.admin === "superadmin",
+          usuario_id,
+        };
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 300)); // Delay para evitar bloqueio
+    } catch (err) {
+      console.warn(
+        `[LeadTalk] ⚠️ Falha ao buscar metadata de ${grupo.id}: ${err.message}. O grupo será salvo sem membros.`
+      );
+      // ✅ GARANTE QUE O GRUPO SEJA SALVO MESMO SEM MEMBROS
+      gruposFormatados.push({
+        nome: grupo.name || grupo.id,
+        jid: grupo.id,
+        grupo_jid: grupo.id,
+        tamanho: 0, // Define o tamanho como 0 se não conseguir obter os membros
         usuario_id,
-      }));
-
-      await new Promise((resolve) => setTimeout(resolve, 300)); // Delay de 300ms
-    } catch (err) {
-      console.warn(
-        `[LeadTalk] ⚠️ Falha ao buscar metadata de ${grupo.id}: ${err.message}`
-      );
+      });
+      membrosPorGrupo[grupo.id] = []; // Adiciona uma entrada vazia para evitar erros
     }
   }
 
-  const arquivoGrupos = `./data/grupos_${usuario_id}.json`;
-  let gruposExistentes = [];
+  // A sua lógica de salvar em arquivos pode permanecer aqui...
 
-  if (fs.existsSync(arquivoGrupos)) {
-    try {
-      const raw = fs.readFileSync(arquivoGrupos, "utf-8");
-      gruposExistentes = JSON.parse(raw);
-    } catch (err) {
-      console.warn(
-        `[LeadTalk] ⚠️ Erro ao ler ${arquivoGrupos}: ${err.message}`
-      );
-    }
-  }
+  await upsertGrupos(gruposFormatados);
+  await upsertMembros(membrosPorGrupo);
+}
 
-  const novosGrupos = gruposFormatados.filter(
-    (novo) => !gruposExistentes.some((g) => g.jid === novo.jid)
-  );
-
-  const todosGrupos = [...gruposExistentes, ...novosGrupos];
-  fs.writeFileSync(arquivoGrupos, JSON.stringify(todosGrupos, null, 2));
-
-  const arquivoMembros = `./data/membros-grupos_${usuario_id}.json`;
-  let membrosExistentes = {};
-
-  if (fs.existsSync(arquivoMembros)) {
-    try {
-      const raw = fs.readFileSync(arquivoMembros, "utf-8");
-      membrosExistentes = JSON.parse(raw);
-    } catch (err) {
-      console.warn(
-        `[LeadTalk] ⚠️ Erro ao ler ${arquivoMembros}: ${err.message}`
-      );
-    }
-  }
-
-  for (const [jid, novosMembros] of Object.entries(membrosPorGrupo)) {
-    const existentes = membrosExistentes[jid] || [];
-
-    const novosUnicos = novosMembros.filter(
-      (novo) => !existentes.some((m) => m.jid === novo.jid)
-    );
-
-    membrosExistentes[jid] = [...existentes, ...novosUnicos];
-  }
-
-  fs.writeFileSync(arquivoMembros, JSON.stringify(membrosExistentes, null, 2));
-
+/**
+ * Orquestra a sincronização completa de contatos e grupos em segundo plano.
+ */
+export async function sincronizarContatosEmBackground(sock, store, usuario_id) {
   console.log(
-    `[LeadTalk] 👥 ${todosGrupos.length} grupos e seus membros salvos para ${usuario_id}`
+    `[Sync] Iniciando sincronização em background para ${usuario_id}`
   );
+  try {
+    // Exporta contatos e grupos com seus membros
+    await exportarContatos(store, usuario_id);
+    await exportarGruposESuasPessoas(sock, store, usuario_id);
 
-  await upsertGrupos(todosGrupos);
-  await upsertMembros(membrosExistentes);
+    console.log(
+      `[Sync] Sincronização em background concluída para ${usuario_id}`
+    );
+  } catch (error) {
+    console.error(
+      `[Sync] Erro durante a sincronização para ${usuario_id}:`,
+      error
+    );
+  }
 }

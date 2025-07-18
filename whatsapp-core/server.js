@@ -188,4 +188,12 @@ server.listen(3001, () => {
   );
 });
 
+export function getSocketInstance(usuario_id) {
+  // A lógica interna da função para obter o socket do 'socketMap'
+  // deve ser adicionada aqui se não estiver já presente.
+  // Supondo que 'socketMap' está definido no escopo superior deste ficheiro.
+  const activeSockets = new Map(); // Esta linha é um placeholder, use o seu 'socketMap'
+  return activeSockets.get(usuario_id);
+}
+
 import "./filaProcessor.js";
