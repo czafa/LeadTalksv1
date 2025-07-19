@@ -199,6 +199,7 @@ export default function Home() {
             type="text"
             placeholder="🔍 Pesquise um contato"
             value={filtroNome}
+            // A função toLowerCase() garante que o estado do filtro é sempre minúsculo
             onChange={(e) => setFiltroNome(e.target.value.toLowerCase())}
             className="border border-gray-600 rounded p-2 w-full bg-gray-700 placeholder-gray-400"
           />
@@ -246,9 +247,24 @@ export default function Home() {
           <h2 className="text-lg font-semibold mb-4">Contatos e Membros</h2>
           <ul className="space-y-2">
             {contatos
-              .filter((contato) =>
-                contato.nome.toLowerCase().includes(filtroNome)
-              )
+              .filter((contato) => {
+                // Pega o texto do filtro (já está em minúsculas graças ao Passo 1)
+                const filtro = filtroNome;
+
+                // Se o filtro estiver vazio, mostra todos
+                if (!filtro) {
+                  return true;
+                }
+
+                // Converte o nome do contato para minúsculas antes de comparar
+                const nomeEmMinusculas = contato.nome.toLowerCase();
+
+                // Verifica se o NOME (em minúsculas) OU o NÚMERO incluem o texto do filtro
+                return (
+                  nomeEmMinusculas.includes(filtro) ||
+                  contato.numero.includes(filtro)
+                );
+              })
               .map((contato) => (
                 <li
                   key={contato.id}
