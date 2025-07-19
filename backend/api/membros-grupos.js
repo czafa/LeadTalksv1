@@ -17,15 +17,14 @@ export default async function handler(req, res) {
   const { usuario_id } = validacao;
 
   try {
-    const ngrokUrl = await getNgrokUrl();
-    if (!ngrokUrl) {
-      return res.status(503).json({ erro: "Serviço de conexão indisponível." });
-    }
-
-    // Repassa a requisição para a rota /api/membros-grupos no whatsapp-core
-    const resposta = await fetch(
-      `${ngrokUrl}/api/membros-grupos?usuario_id=${usuario_id}`
-    );
+    const resposta = await fetch(`${ngrokUrl}/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
+      body: JSON.stringify({ usuario_id }),
+    });
 
     if (!resposta.ok) {
       return res

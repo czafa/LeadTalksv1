@@ -22,15 +22,19 @@ export default async function handler(req, res) {
   const { usuario_id } = validacao;
 
   try {
-    // 5. Obtém a URL do serviço principal (whatsapp-core)
     const ngrokUrl = await getNgrokUrl();
     if (!ngrokUrl) {
-      return res.status(503).json({ erro: "Serviço de conexão indisponível." });
+      /* ... */
     }
 
-    // 6. Repassa a requisição para a NOVA ROTA /api/pessoas no whatsapp-core
+    // Repassa a requisição para a NOVA ROTA /api/pessoas no whatsapp-core
     const resposta = await fetch(
-      `${ngrokUrl}/api/pessoas?usuario_id=${usuario_id}`
+      `${ngrokUrl}/api/pessoas?usuario_id=${usuario_id}`,
+      {
+        headers: {
+          "ngrok-skip-browser-warning": "true",
+        },
+      }
     );
 
     if (!resposta.ok) {
