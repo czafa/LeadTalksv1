@@ -13,23 +13,22 @@ export default async function handler(req, res) {
   if (!validacao.autorizado) {
     return res.status(401).json({ erro: "Não autorizado" });
   }
-
   const { usuario_id } = validacao;
-
   try {
-    const resposta = await fetch(`${ngrokUrl}/start`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
-      body: JSON.stringify({ usuario_id }),
-    });
+    const ngrokUrl = await getNgrokUrl();
+    if (!ngrokUrl) {
+      return res.status(503).json({ erro: "Serviço de conexão indisponível." });
+    }
+
+    const resposta = await fetch(
+      `${ngrokUrl}/api/membros-grupos?usuario_id=${usuario_id}`,
+      { headers: { "ngrok-skip-browser-warning": "true" } } // Adicionado header do Ngrok
+    );
 
     if (!resposta.ok) {
       return res
         .status(resposta.status)
-        .json({ erro: "Falha ao buscar membros de grupos." });
+        .json({ erro: "Falha ao buscar membros no serviço principal." });
     }
 
     const dados = await resposta.json();

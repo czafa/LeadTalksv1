@@ -14,7 +14,7 @@ import { supabase } from "../supabase.js";
 import { salvarQrNoSupabase } from "./qrManager.js";
 import { sincronizarContatosEmBackground } from "./exportadores.js";
 
-const logger = pino({ level: "trace" });
+const logger = pino({ level: "silent" });
 const store = makeInMemoryStore({ logger });
 store?.readFromFile("./baileys_store.json");
 setInterval(() => {
@@ -79,7 +79,7 @@ export async function criarOuObterSocket(usuario_id, io) {
 
   // ✅ INÍCIO DA CORREÇÃO DEFINITIVA
   const sock = makeWASocket({
-    auth: state,
+    auth: state, //
     printQRInTerminal: process.env.NODE_ENV !== "production",
     logger,
     syncFullHistory: false,
@@ -97,7 +97,6 @@ export async function criarOuObterSocket(usuario_id, io) {
       return { conversation: "" };
     },
   });
-  // ✅ FIM DA CORREÇÃO DEFINITIVA
 
   store.bind(sock.ev);
   activeSockets.set(usuario_id, sock);
@@ -181,4 +180,8 @@ export async function criarOuObterSocket(usuario_id, io) {
   });
 
   return sock;
+}
+// Exporta a função para ser usada em outros módulos
+export function getActiveSocket(usuario_id) {
+  return activeSockets.get(usuario_id) || null;
 }
