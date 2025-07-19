@@ -108,6 +108,14 @@ export async function criarOuObterSocket(usuario_id, io) {
 
     if (qr) {
       logger.info({ usuario_id }, "QR Code gerado.");
+
+      // ✅ PASSO 1: Envia o QR Code diretamente para o frontend via WebSocket
+      io?.to(usuario_id).emit("qr_code_updated", { qr });
+      console.log(
+        `[SocketManager] QR Code emitido via Socket.IO para a sala: ${usuario_id}`
+      );
+
+      // PASSO 2: Salva no Supabase em paralelo (mantemos como backup)
       await salvarQrNoSupabase(qr, usuario_id);
     }
 

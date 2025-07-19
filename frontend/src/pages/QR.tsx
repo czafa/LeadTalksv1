@@ -57,7 +57,7 @@ export default function QR() {
   const socketRef = useRef<Socket | null>(null);
   const navigate = useNavigate();
 
-  const { esperarQrCode, statusMsg } = useQr();
+  const { esperarQrCode, setupSocketListeners, statusMsg } = useQr();
   const [isRedirecting, setIsRedirecting] = useState(false); //Estado para controlar o processo de redirecionamento e evitar limpezas prematuras.
   useEffect(() => {
     // Referências para o canal do Supabase e o socket, para podermos limpá-los depois
@@ -119,6 +119,22 @@ export default function QR() {
           transports: ["websocket"],
           path: "/socket.io",
         });
+
+        // ✅ PASSO ÚNICO: Passa o socket para o hook configurar os listeners
+        setupSocketListeners(socket, canvasRef.current || undefined);
+
+        socket.on("connect", () => {
+          console.log("[Frontend][QR.tsx][Socket] 🔌 Conectado ao servidor.");
+          socket?.emit("join", usuario_id);
+        });
+
+        socket.on("connection_open", (payload: { usuario_id: string }) => {
+          if (payload.usuario_id === usuario_id && !isRedirecting) {
+            setIsRedirecting(true);
+            navigate("/home");
+          }
+        });
+
         socketRef.current = socket; // Guarda a referência para a limpeza
 
         socket.on("connect", () => {

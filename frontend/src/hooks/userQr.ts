@@ -5,6 +5,7 @@ import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useCallback, useState, useRef } from "react";
 import QRCode from "qrcode";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { Socket } from "socket.io-client";
 
 export function useQr() {
   // ✅ 3. Obtenha a instância correta do Supabase via hook
@@ -52,8 +53,30 @@ export function useQr() {
     [supabase] // ✅ 4. Adicione 'supabase' como dependência do useCallback
   );
 
+  const setupSocketListeners = useCallback(
+    (socket: Socket | null, canvas?: HTMLCanvasElement) => {
+      if (!socket) return;
+
+      socket.on("qr_code_updated", async (payload: { qr: string }) => {
+        const novoQr = payload.qr;
+        console.log(
+          "[useQr][Socket] ⚡️ QR Code recebido via Socket.IO!",
+          novoQr
+        );
+
+        if (novoQr && novoQr !== qrCodeRef.current && canvas) {
+          qrCodeRef.current = novoQr;
+          await QRCode.toCanvas(canvas, novoQr);
+          setStatusMsg("QR Code pronto. Escaneie com seu celular.");
+        }
+      });
+    },
+    [] // Sem dependências, pois as refs e setStatusMsg são estáveis
+  );
+
   return {
     esperarQrCode,
+    setupSocketListeners, // Exporta a nova função
     statusMsg,
   };
 }
