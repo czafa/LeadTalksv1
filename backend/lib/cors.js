@@ -3,7 +3,7 @@
 // Lista de domínios (origens) que têm permissão para acessar sua API.
 // Usamos a URL do erro de CORS que vimos anteriormente.
 const allowedOrigins = [
-  "https://lead-frontend-git-main-caios-projects-8a8af8a0.vercel.app",
+  "https://lead-talksv1.vercel.app",
   "http://localhost:5173", // Ambiente de dev
   "http://localhost:4173", // Ambiente de dev
 ];
