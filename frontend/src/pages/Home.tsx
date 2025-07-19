@@ -92,17 +92,17 @@ export default function Home() {
         // ✅ PASSO FINAL: Busca a nova lista unificada de 'pessoas'
         const [pessoasRes, grupoRes, membrosRes] = await Promise.all([
           // ALTERADO: Busca da nova rota unificada
-          fetch(`${BACKEND_URL}/api/pessoas?usuario_id=${user.id}`, {
+          fetch(`${BACKEND_URL}/pessoas?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
 
           // MANTIDO: Ainda precisamos da lista de grupos para a UI
-          fetch(`${BACKEND_URL}/api/grupos?usuario_id=${user.id}`, {
+          fetch(`${BACKEND_URL}/grupos?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
 
           // MANTIDO: Ainda precisamos dos membros para expandir os grupos
-          fetch(`${BACKEND_URL}/api/membros-grupos?usuario_id=${user.id}`, {
+          fetch(`${BACKEND_URL}/membros-grupos?usuario_id=${user.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           }).then((res) => res.json()),
         ]);

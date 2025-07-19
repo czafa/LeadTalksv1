@@ -16,7 +16,8 @@ export function configurarCors(req, res) {
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
-
+  // Permite cookies e credenciais
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   // Cabeçalhos que o navegador do cliente tem permissão para usar na requisição
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
