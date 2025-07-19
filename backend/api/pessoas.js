@@ -6,6 +6,7 @@ import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
+  console.log("Authorization header:", req.headers.authorization);
   // 2. Bloco de CORS antigo foi substituído por esta única linha
   if (configurarCors(req, res)) {
     return;
