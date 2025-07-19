@@ -1,35 +1,33 @@
 // backend/api/pessoas.js
 
-import { applyCors } from "../lib/cors.js";
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
-  // ✅ INÍCIO DA CORREÇÃO DE CORS
-  if (req.method === "OPTIONS") {
-    applyCors(res, req);
+  // 2. Bloco de CORS antigo foi substituído por esta única linha
+  if (configurarCors(req, res)) {
     return;
   }
-  // 1. Aplica as regras de CORS
-  if (applyCors(res, req)) return;
 
-  // 2. Valida o token JWT do usuário para garantir a autenticação
+  // 3. Valida o token JWT do usuário para garantir a autenticação
   const validacao = await validarRequisicaoSessao(req);
   if (!validacao.autorizado) {
     return res.status(401).json({ erro: "Não autorizado" });
   }
 
-  // 3. Extrai o ID do usuário validado
+  // 4. Extrai o ID do usuário validado
   const { usuario_id } = validacao;
 
   try {
-    // 4. Obtém a URL do serviço principal (whatsapp-core)
+    // 5. Obtém a URL do serviço principal (whatsapp-core)
     const ngrokUrl = await getNgrokUrl();
     if (!ngrokUrl) {
       return res.status(503).json({ erro: "Serviço de conexão indisponível." });
     }
 
-    // 5. Repassa a requisição para a NOVA ROTA /api/pessoas no whatsapp-core
+    // 6. Repassa a requisição para a NOVA ROTA /api/pessoas no whatsapp-core
     const resposta = await fetch(
       `${ngrokUrl}/api/pessoas?usuario_id=${usuario_id}`
     );

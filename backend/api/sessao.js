@@ -1,18 +1,15 @@
 // backend/api/sessao.js
-import { applyCors } from "../lib/cors.js";
+
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 
 export default async function handler(req, res) {
-  // INÍCIO CORS
-  if (req.method === "OPTIONS") {
-    applyCors(res, req);
+  // 2. Todo o bloco de CORS antigo foi substituído por esta única linha
+  if (configurarCors(req, res)) {
     return;
   }
-  console.log("Origin recebida:", req.headers.origin);
-  console.log("Ambiente:", process.env.NODE_ENV);
-
-  if (applyCors(res, req)) return;
 
   try {
     // === POST: Atualiza status da sessão ===

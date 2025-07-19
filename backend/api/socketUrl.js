@@ -1,9 +1,14 @@
 // backend/api/socket-url.js
+
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
-import { applyCors } from "../lib/cors.js";
 
 export default async function handler(req, res) {
-  if (applyCors(res, req)) return;
+  // 2. A chamada de CORS foi atualizada para o novo padrão
+  if (configurarCors(req, res)) {
+    return;
+  }
 
   const { data, error } = await supabase
     .from("configuracoes")

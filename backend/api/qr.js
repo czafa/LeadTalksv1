@@ -1,6 +1,7 @@
 // GitHub/LeadTalksv1/backend/api/qr.js
 
-import { applyCors } from "../lib/cors.js";
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 
 /**
@@ -8,13 +9,12 @@ import { supabase } from "../lib/supabase.js";
  * para um usuário do banco de dados.
  */
 export default async function handler(req, res) {
-  console.log("📦 [API /qr] Requisição recebida");
-  // CORS
-  if (req.method === "OPTIONS") {
-    applyCors(res, req);
+  // 2. Bloco de CORS antigo foi substituído por esta única linha
+  if (configurarCors(req, res)) {
     return;
   }
-  applyCors(res, req);
+
+  console.log("📦 [API /qr] Requisição recebida");
 
   // Extrai o ID do usuário da query string
   const usuario_id = req.query.usuario_id || req.body?.usuario_id;
@@ -52,7 +52,6 @@ export default async function handler(req, res) {
     }
 
     // 3. Retorna o QR code encontrado ou null se não houver nenhum
-    // O frontend agora lida com o caso de 'qr: null' e continua tentando (seja via polling ou realtime)
     console.log(
       `[API /qr] ✅ QR encontrado para ${usuario_id}: ${qrData ? "Sim" : "Não"}`
     );

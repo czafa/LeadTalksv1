@@ -1,37 +1,34 @@
-// GitHub/LeadTalksv1/backend/lib/cors.js
+// backend/lib/cors.js
 
-export function applyCors(res, req) {
-  const isDev = process.env.NODE_ENV !== "production";
+// Lista de domínios (origens) que têm permissão para acessar sua API.
+// Usamos a URL do erro de CORS que vimos anteriormente.
+const allowedOrigins = [
+  "https://lead-frontend-git-main-caios-projects-8a8af8a0.vercel.app",
+  "http://localhost:5173", // Ambiente de dev
+  "http://localhost:4173", // Ambiente de dev
+];
 
-  const allowedOrigins = isDev
-    ? ["http://localhost:5173", "http://localhost:4173"]
-    : [
-        "https://lead-talksv1.vercel.app", // ✅ seu frontend
-        "https://www.lead-talksv1.vercel.app", // (caso use com www)
-      ];
-
+// Esta é a ÚNICA função que o arquivo precisa exportar.
+export function configurarCors(req, res) {
   const origin = req.headers.origin;
 
+  // Permite a origem se ela estiver na lista de permissões
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    console.warn("[CORS] Origem não permitida:", origin);
   }
 
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,OPTIONS,PATCH,DELETE,POST,PUT"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Authorization, Content-Type"
-  );
+  // Cabeçalhos que o navegador do cliente tem permissão para usar na requisição
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
+  // Cacheia a resposta do preflight por 24 horas
+  res.setHeader("Access-Control-Max-Age", "86400");
+
+  // Para requisições OPTIONS (preflight), respondemos imediatamente com sucesso.
   if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return true;
+    res.status(204).end();
+    return true; // Indica que a requisição foi tratada e deve parar aqui.
   }
 
-  return false;
+  return false; // Indica que a requisição deve continuar para a lógica do endpoint.
 }

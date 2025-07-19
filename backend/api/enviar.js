@@ -1,16 +1,16 @@
 // backend/api/enviar.js
-import { applyCors } from "../lib/cors.js";
+
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { getUserIdFromRequest } from "../lib/auth.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
-  // ✅ INÍCIO CORS
-  if (req.method === "OPTIONS") {
-    applyCors(res, req);
+  // 2. Bloco de CORS antigo foi substituído por esta única linha
+  if (configurarCors(req, res)) {
     return;
   }
-  if (applyCors(res, req)) return; // 🌐 Middleware centralizado
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });

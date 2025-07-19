@@ -1,22 +1,22 @@
 // backend/api/iniciar-leadtalk.js
-import { applyCors } from "../lib/cors.js";
+
+// 1. A importação foi trocada para a nova função
+import { configurarCors } from "../lib/cors.js";
 import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 import { getNgrokUrl } from "../lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
-  // ✅ INÍCIO CORS
-  if (req.method === "OPTIONS") {
-    applyCors(res, req);
+  // 2. Bloco de CORS antigo foi substituído por esta única linha
+  if (configurarCors(req, res)) {
     return;
   }
-  if (applyCors(res, req)) return;
 
   if (req.method !== "POST") {
     return res.status(405).json({ erro: "Método não permitido" });
   }
 
-  // 1. Validação da sessão do usuário
+  // 3. Validação da sessão do usuário
   const validacao = await validarRequisicaoSessao(req);
   if (!validacao.autorizado) {
     return res
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   console.log("[LeadTalk] ✅ Validação de sessão autorizada para:", usuario_id);
 
   try {
-    // 2. Garante que a sessão esteja marcada como 'logado' no banco
+    // 4. Garante que a sessão esteja marcada como 'logado' no banco
     const { error: upsertError } = await supabase.from("sessao").upsert(
       {
         usuario_id,
@@ -55,8 +55,7 @@ export default async function handler(req, res) {
         .json({ erro: "Erro ao registrar estado da sessão." });
     }
 
-    // --- SEÇÃO CORRIGIDA ---
-    // 3. Aciona o backend local (whatsapp-core) para iniciar a conexão
+    // 5. Aciona o backend local (whatsapp-core) para iniciar a conexão
     const ngrokUrl = await getNgrokUrl();
     if (!ngrokUrl) {
       console.error(
@@ -72,33 +71,28 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario_id }),
-        // Adicionar um timeout pode ser útil em produção
       });
 
-      // MELHORIA: Se a resposta do backend local não for 'OK', retorna um erro.
       if (!resposta.ok) {
-        const corpoErro = await resposta.text(); // Pega o corpo do erro para debug
+        const corpoErro = await resposta.text();
         console.warn(
           `[LeadTalk] ⚠️ Backend local respondeu com erro. Status: ${resposta.status}, Corpo: ${corpoErro}`
         );
         return res.status(502).json({
-          // 502 Bad Gateway: O servidor atuou como gateway e recebeu uma resposta inválida.
           erro: "Falha ao comunicar com o serviço de conexão. Tente novamente mais tarde.",
         });
       }
     } catch (fetchError) {
-      // Pega erros de rede, como o backend local estar offline.
       console.error(
         "[LeadTalk] ❌ Erro de rede ao contatar o backend local:",
         fetchError.message
       );
       return res.status(504).json({
-        // 504 Gateway Timeout: O servidor atuou como gateway e não obteve resposta a tempo.
         erro: "O serviço de conexão parece estar offline. Verifique o servidor local.",
       });
     }
 
-    // retorna para o frontend
+    // Retorna para o frontend
     return res.status(200).json({
       status: "Requisição para iniciar a conexão enviada com sucesso.",
     });
