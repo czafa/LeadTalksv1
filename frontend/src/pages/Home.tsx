@@ -336,28 +336,49 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {expandido && membros.length > 0 && (
-                    <ul className="ml-4 mt-2 space-y-1 text-sm">
-                      {membros.map((membro, i) => (
-                        <li key={i} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={contatosSelecionados.includes(
-                              membro.numero
-                            )}
-                            onChange={(e) => {
-                              const numero = membro.numero;
-                              setContatosSelecionados((prev) =>
-                                e.target.checked
-                                  ? [...prev, numero]
-                                  : prev.filter((n) => n !== numero)
-                              );
-                            }}
-                          />
-                          {membro.nome} ({membro.numero})
-                        </li>
-                      ))}
-                    </ul>
+                  {expandido && (
+                    <div className="ml-4 mt-2 space-y-1 text-sm border-t border-gray-700 pt-2">
+                      {/* Caso 1: Os membros já foram carregados e existem */}
+                      {membros && membros.length > 0 && (
+                        <ul>
+                          {membros.map((membro, i) => (
+                            <li key={i} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={contatosSelecionados.includes(
+                                  membro.numero
+                                )}
+                                onChange={(e) => {
+                                  const numero = membro.numero;
+                                  setContatosSelecionados((prev) =>
+                                    e.target.checked
+                                      ? [...prev, numero]
+                                      : // O erro 'contatos' não é uma função provavelmente estava aqui
+                                        prev.filter((n) => n !== numero)
+                                  );
+                                }}
+                              />
+                              {membro.nome} ({membro.numero})
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Caso 2: Os membros já foram carregados, mas a lista está vazia */}
+                      {membros && membros.length === 0 && (
+                        <p className="text-gray-500 italic">
+                          Este grupo não tem outros membros.
+                        </p>
+                      )}
+
+                      {/* Caso 3: Os membros AINDA NÃO foram carregados (estão 'undefined') */}
+                      {membros === undefined && (
+                        <div className="flex items-center gap-2 text-yellow-400">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>A sincronizar membros...</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </li>
               );

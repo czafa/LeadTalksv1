@@ -60,18 +60,24 @@ app.get("/api/pessoas", async (req, res) => {
   }
   try {
     const { data, error } = await supabase
-      .from("pessoas_unicas") // Lê diretamente da TABELA VIEW (pessoas_unicas)
+      .from("pessoas_unicas")
       .select("nome_final, numero")
-      .eq("usuario_id", usuario_id);
+      .eq("usuario_id", usuario_id)
+
+      // ✅ CORREÇÃO: A linha que tentava ordenar por 'prioridade' foi removida.
+      // A VIEW já retorna os dados na ordem correta. Apenas garantimos a ordem do nome.
+      .order("nome_final", { ascending: true })
+
+      .limit(15000);
 
     if (error) {
+      // O erro que você viu no terminal aconteceu aqui
       console.error("Erro Supabase ao buscar pessoas:", error);
       return res
         .status(500)
         .json({ error: "Erro ao buscar pessoas unificadas" });
     }
 
-    // Formata a saída para o frontend
     const resultadoFormatado = data.map((p) => ({
       nome: p.nome_final,
       numero: p.numero,

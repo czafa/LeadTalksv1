@@ -1,125 +1,108 @@
-import fs from "fs";
+// whatsapp-core/core/exportadores.js
+
 import { upsertContatos, upsertGrupos, upsertMembros } from "./supabaseSync.js";
 
 /**
- * Exporta contatos para arquivo local e Supabase.
+ * PASSO 1: Coleta todos os "humanos" (contatos e participantes de grupos),
+ * cria uma lista única e a salva na tabela 'contatos'.
+ * Esta função cria a nossa fonte única da verdade para pessoas.
  */
-export async function exportarContatos(store, usuario_id) {
-  const contatos = Object.entries(store.contacts).map(([jid, contato]) => ({
-    nome:
-      contato.name || contato.notify || contato.pushname || jid.split("@")[0],
-    numero: jid.split("@")[0],
-    tipo: jid.includes("@g.us") ? "grupo" : "contato",
-    usuario_id,
+async function exportarContatosUnicos(store, sock, usuario_id) {
+  // Pega os contatos salvos na agenda
+  const contatosDaAgenda = Object.values(store.contacts).map((c) => ({
+    numero: c.id.split("@")[0],
+    nome: c.name || c.notify || c.pushname || c.id.split("@")[0],
+    usuario_id: usuario_id,
   }));
 
-  const arquivo = `./data/contatos_${usuario_id}.json`;
-  let contatosExistentes = [];
-
-  if (fs.existsSync(arquivo)) {
+  // Pega todos os participantes de todos os grupos
+  const chats = store.chats.all().filter((chat) => chat.id.endsWith("@g.us"));
+  let participantesDeGrupos = [];
+  for (const chat of chats) {
     try {
-      const raw = fs.readFileSync(arquivo, "utf-8");
-      contatosExistentes = JSON.parse(raw);
-    } catch (err) {
-      console.warn(`[LeadTalk] ⚠️ Erro ao ler ${arquivo}: ${err.message}`);
-    }
-  }
-
-  const novos = contatos.filter(
-    (novo) => !contatosExistentes.some((c) => c.numero === novo.numero)
-  );
-
-  const todos = [...contatosExistentes, ...novos];
-  fs.writeFileSync(arquivo, JSON.stringify(todos, null, 2));
-  console.log(
-    `[LeadTalk] 📱 ${todos.length} contatos salvos para ${usuario_id}`
-  );
-  await upsertContatos(todos);
-
-  return todos; // <== ADICIONAR ESTA LINHA
-}
-
-/**
- * Exporta grupos e membros, cruzando informações para obter nomes.
- */
-export async function exportarGruposESuasPessoas(sock, store, usuario_id) {
-  const grupos = store.chats.all().filter((chat) => chat.id.endsWith("@g.us"));
-  const gruposFormatados = [];
-  const membrosPorGrupo = {};
-
-  for (const grupo of grupos) {
-    try {
-      const metadata = await sock.groupMetadata(grupo.id);
-
-      gruposFormatados.push({
-        nome: metadata.subject,
-        jid: metadata.id,
-        grupo_jid: metadata.id,
-        tamanho: metadata.participants.length,
-        usuario_id,
-      });
-
-      // LÓGICA DE MEMBROS
-      membrosPorGrupo[metadata.id] = metadata.participants.map((p) => {
-        const numero = p.id.split("@")[0];
-
-        // O 'baileys' não fornece pushname diretamente na lista de participantes.
-        // A abordagem correta continua sendo cruzar com o 'store.contacts'.
-        const contatoInfo = store.contacts[p.id];
-
-        // Ordem de prioridade: 1. Nome salvo, 2. Pushname, 3. Número
-        const nomeFinal =
-          contatoInfo?.name ||
-          contatoInfo?.notify ||
-          contatoInfo?.pushname ||
-          numero;
-
-        return {
-          numero: numero,
-          jid: p.id,
-          grupo_jid: metadata.id,
-          grupo_nome: metadata.subject,
-          membro_nome: nomeFinal, // Usa o nome encontrado na ordem de prioridade
-          membro_numero: numero,
-          admin: p.admin === "admin" || p.admin === "superadmin",
-          usuario_id,
-        };
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 300)); // Delay para evitar bloqueio
-    } catch (err) {
+      const metadata = await sock.groupMetadata(chat.id);
+      const participantes = metadata.participants.map((p) => ({
+        numero: p.id.split("@")[0],
+        // O nome aqui é o 'pushname', que servirá de fallback se o contato não estiver na agenda
+        nome: store.contacts[p.id]?.pushname || p.id.split("@")[0],
+        usuario_id: usuario_id,
+      }));
+      participantesDeGrupos.push(...participantes);
+    } catch (e) {
       console.warn(
-        `[LeadTalk] ⚠️ Falha ao buscar metadata de ${grupo.id}: ${err.message}. O grupo será salvo sem membros.`
+        `[Exportadores] Falha ao buscar metadados do grupo ${chat.id}`
       );
-      // ✅ GARANTE QUE O GRUPO SEJA SALVO MESMO SEM MEMBROS
-      gruposFormatados.push({
-        nome: grupo.name || grupo.id,
-        jid: grupo.id,
-        grupo_jid: grupo.id,
-        tamanho: 0, // Define o tamanho como 0 se não conseguir obter os membros
-        usuario_id,
-      });
-      membrosPorGrupo[grupo.id] = []; // Adiciona uma entrada vazia para evitar erros
     }
   }
 
-  // A sua lógica de salvar em arquivos pode permanecer aqui...
+  // Junta as duas listas (agenda + participantes)
+  const todosOsContatos = [...contatosDaAgenda, ...participantesDeGrupos];
 
-  await upsertGrupos(gruposFormatados);
-  await upsertMembros(membrosPorGrupo);
+  // Remove duplicatas, garantindo que cada número apareça apenas uma vez
+  const contatosUnicos = Object.values(
+    todosOsContatos.reduce((acc, contato) => {
+      // A lógica de 'upsert' já lida com a priorização de nomes,
+      // mas podemos fazer uma pré-filtragem aqui para garantir qualidade.
+      acc[contato.numero] = acc[contato.numero] || contato;
+      return acc;
+    }, {})
+  );
+
+  console.log(
+    `[Exportadores] Total de ${contatosUnicos.length} contatos únicos encontrados para sincronizar.`
+  );
+  await upsertContatos(contatosUnicos);
 }
 
 /**
- * Orquestra a sincronização completa de contatos e grupos em segundo plano.
+ * PASSO 2: Itera sobre os grupos e salva apenas as RELAÇÕES
+ * na tabela 'membros_grupos'.
+ */
+export async function exportarRelacoesDeGrupos(
+  sock,
+  store,
+  usuario_id,
+  grupoJid
+) {
+  const metadata = await sock.groupMetadata(grupoJid);
+
+  const grupoParaSalvar = {
+    nome: metadata.subject,
+    jid: metadata.id,
+    grupo_jid: metadata.id,
+    tamanho: metadata.participants.length,
+    usuario_id,
+  };
+
+  const membrosParaSalvar = metadata.participants.map((p) => ({
+    usuario_id: usuario_id,
+    grupo_jid: metadata.id,
+    membro_numero: p.id.split("@")[0],
+    membro_nome:
+      store.contacts[p.id]?.name ||
+      store.contacts[p.id]?.pushname ||
+      p.id.split("@")[0],
+    admin: p.admin === "admin" || p.admin === "superadmin",
+  }));
+
+  // O 'upsert' lida com a inserção ou atualização
+  await upsertGrupos([grupoParaSalvar]);
+  await upsertMembros(membrosParaSalvar);
+}
+
+/**
+ * PASSO 3: Orquestra a sincronização completa, seguindo a ordem correta.
  */
 export async function sincronizarContatosEmBackground(sock, store, usuario_id) {
   console.log(
     `[Sync] Iniciando sincronização em background para ${usuario_id}`
   );
   try {
-    // Exporta contatos e grupos com seus membros
-    await exportarContatos(store, usuario_id);
-    await exportarGruposESuasPessoas(sock, store, usuario_id);
+    // Primeiro, popula a tabela 'contatos' com todas as pessoas únicas
+    await exportarContatosUnicos(store, sock, usuario_id);
+
+    // Depois, popula as tabelas 'grupos' e 'membros_grupos' (as relações)
+    await exportarRelacoesDeGrupos(sock, store, usuario_id);
 
     console.log(
       `[Sync] Sincronização em background concluída para ${usuario_id}`

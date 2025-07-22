@@ -13,6 +13,7 @@ import { Boom } from "@hapi/boom";
 import { supabase } from "../supabase.js";
 import { salvarQrNoSupabase } from "./qrManager.js";
 import { sincronizarContatosEmBackground } from "./exportadores.js";
+import { iniciarSincronizacaoCompleta } from "./syncManager.js";
 
 const logger = pino({ level: "silent" });
 const store = makeInMemoryStore({ logger });
@@ -124,7 +125,13 @@ export async function criarOuObterSocket(usuario_id, io) {
       await updateSessionStatus(usuario_id, true);
       await supabase.from("qr").delete().eq("usuario_id", usuario_id);
       io?.to(usuario_id).emit("connection_open", { usuario_id });
-      sincronizarContatosEmBackground(sock, store, usuario_id);
+
+      // ✅ CORREÇÃO: Adiciona um atraso de 15 segundos antes de sincronizar.
+      // Isto dá tempo para a biblioteca Baileys carregar todos os contatos.
+      console.log(
+        "[SocketManager] Conexão aberta. Aguardando 15 segundos para sincronizar contatos..."
+      );
+      iniciarSincronizacaoCompleta(sock, store, usuario_id);
     }
 
     if (connection === "close") {
