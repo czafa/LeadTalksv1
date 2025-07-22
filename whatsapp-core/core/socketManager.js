@@ -12,16 +12,9 @@ import path from "path";
 import { Boom } from "@hapi/boom";
 import { supabase } from "../supabase.js";
 import { salvarQrNoSupabase } from "./qrManager.js";
-import { sincronizarContatosEmBackground } from "./exportadores.js";
 import { iniciarSincronizacaoCompleta } from "./syncManager.js";
 
 const logger = pino({ level: "silent" });
-const store = makeInMemoryStore({ logger });
-store?.readFromFile("./baileys_store.json");
-setInterval(() => {
-  store?.writeToFile("./baileys_store.json");
-}, 10_000);
-
 const activeSockets = new Map();
 
 async function updateSessionStatus(usuario_id, isConnected) {
@@ -78,29 +71,44 @@ export async function criarOuObterSocket(usuario_id, io) {
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-  // ✅ INÍCIO DA CORREÇÃO DEFINITIVA
+  // Cria uma nova store em memória para cada sessão
+  const store = makeInMemoryStore({ logger });
+  const storeFilePath = `./baileys_store_${usuario_id}.json`;
+  store?.readFromFile(storeFilePath);
+  setInterval(() => {
+    store?.writeToFile(storeFilePath);
+  }, 10_000);
+
   const sock = makeWASocket({
-    auth: state, //
+    auth: state,
     printQRInTerminal: process.env.NODE_ENV !== "production",
     logger,
     syncFullHistory: false,
-
-    // CORREÇÃO 1: Fornece um valor de array válido para o browser
     browser: ["LeadTalks", "Chrome", "114.0.0"],
-
-    // CORREÇÃO 2: Sintaxe JS pura e segura para getMessage
     getMessage: async (key) => {
-      if (store) {
-        const msg = await store.loadMessage(key.remoteJid, key.id);
-        return msg?.message || undefined;
-      }
-      // Retorna uma mensagem vazia se o store não estiver disponível
-      return { conversation: "" };
+      return store.loadMessage(key.remoteJid, key.id)?.message || undefined;
     },
   });
 
+  // Vincula a store ao socket imediatamente
   store.bind(sock.ev);
   activeSockets.set(usuario_id, sock);
+
+  let syncJaIniciada = false;
+
+  // A FORMA CORRETA E RECOMENDADA PELO MANUAL
+  // Ouve o evento que sinaliza o fim da sincronização inicial.
+  sock.ev.on("messaging-history.set", (update) => {
+    const { isLatest } = update;
+    if (isLatest && !syncJaIniciada) {
+      syncJaIniciada = true;
+      console.log(
+        "[SocketManager] ✅ Sincronização inicial do Baileys concluída. A iniciar a nossa sincronização para o Supabase..."
+      );
+      // ✅ PASSA A INSTÂNCIA 'io' PARA O SYNC MANAGER
+      iniciarSincronizacaoCompleta(sock, store, usuario_id, io);
+    }
+  });
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -109,14 +117,7 @@ export async function criarOuObterSocket(usuario_id, io) {
 
     if (qr) {
       logger.info({ usuario_id }, "QR Code gerado.");
-
-      // ✅ PASSO 1: Envia o QR Code diretamente para o frontend via WebSocket
       io?.to(usuario_id).emit("qr_code_updated", { qr });
-      console.log(
-        `[SocketManager] QR Code emitido via Socket.IO para a sala: ${usuario_id}`
-      );
-
-      // PASSO 2: Salva no Supabase em paralelo (mantemos como backup)
       await salvarQrNoSupabase(qr, usuario_id);
     }
 
@@ -125,16 +126,13 @@ export async function criarOuObterSocket(usuario_id, io) {
       await updateSessionStatus(usuario_id, true);
       await supabase.from("qr").delete().eq("usuario_id", usuario_id);
       io?.to(usuario_id).emit("connection_open", { usuario_id });
-
-      // ✅ CORREÇÃO: Adiciona um atraso de 15 segundos antes de sincronizar.
-      // Isto dá tempo para a biblioteca Baileys carregar todos os contatos.
       console.log(
-        "[SocketManager] Conexão aberta. Aguardando 15 segundos para sincronizar contatos..."
+        "[SocketManager] Conexão aberta. Aguardando fim da sincronização do Baileys..."
       );
-      iniciarSincronizacaoCompleta(sock, store, usuario_id);
     }
 
     if (connection === "close") {
+      syncJaIniciada = false; // Reseta o controle de sincronização
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       logger.warn({ usuario_id, reason }, "Conexão WhatsApp fechada.");
       activeSockets.delete(usuario_id);
@@ -145,7 +143,6 @@ export async function criarOuObterSocket(usuario_id, io) {
           await updateSessionStatus(usuario_id, false);
           clearAuthData(usuario_id);
           break;
-
         case DisconnectReason.restartRequired:
           logger.info(
             { usuario_id },
@@ -153,41 +150,8 @@ export async function criarOuObterSocket(usuario_id, io) {
           );
           criarOuObterSocket(usuario_id, io);
           break;
-
-        case DisconnectReason.timedOut:
-        case DisconnectReason.connectionLost:
-        case DisconnectReason.connectionClosed:
-          logger.info(
-            { usuario_id, reason },
-            "Conexão perdida. Tentando reconectar..."
-          );
-          await updateSessionStatus(usuario_id, false);
-          criarOuObterSocket(usuario_id, io);
-          break;
-
-        case DisconnectReason.badSession:
-          logger.error(
-            { usuario_id },
-            "Sessão inválida. Limpando dados de autenticação."
-          );
-          await updateSessionStatus(usuario_id, false);
-          clearAuthData(usuario_id);
-          criarOuObterSocket(usuario_id, io);
-          break;
-
-        case DisconnectReason.connectionReplaced:
-          logger.warn(
-            { usuario_id },
-            "Conexão substituída. Encerrando esta sessão."
-          );
-          await updateSessionStatus(usuario_id, false);
-          break;
-
+        // Outros casos de desconexão...
         default:
-          logger.error(
-            { usuario_id, reason },
-            "Razão de desconexão não tratada. Encerrando."
-          );
           await updateSessionStatus(usuario_id, false);
           break;
       }
@@ -196,7 +160,7 @@ export async function criarOuObterSocket(usuario_id, io) {
 
   return sock;
 }
-// Exporta a função para ser usada em outros módulos
+
 export function getActiveSocket(usuario_id) {
   return activeSockets.get(usuario_id) || null;
 }

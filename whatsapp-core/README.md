@@ -1,106 +1,106 @@
-# 📱 LeadTalk - WhatsApp Core (VM Oracle)
+// frontend/src/pages/Home.tsx
 
-Este é o módulo `whatsapp-core` responsável por conectar ao WhatsApp usando a biblioteca [Baileys](https://github.com/WhiskeySockets/Baileys), extrair contatos, grupos e membros, e enviar mensagens, tudo integrado ao Supabase.
+import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import io from "socket.io-client";
+import type { Socket } from "socket.io-client";
 
-> ✅ Este projeto pode rodar **localmente** (modo desenvolvimento) ou na **VM Oracle** (modo produção), com comportamento adaptativo.
+const BACKEND_URL = import.meta.env.VITE_API_URL;
 
----
+type Contato = { nome: string; numero: string; };
+type Grupo = { grupo_jid: string; nome: string; tamanho: number; };
+type Membro = { nome: string; numero: string };
+type MembrosPorGrupo = Record<string, Membro[]>;
+type ProgressoSync = { atual: number; total: number };
 
-## 🧱 Estrutura do projeto
+export default function Home() {
+const supabase = useSupabaseClient();
+const user = useUser();
+const navigate = useNavigate();
+const socketRef = useRef<Socket | null>(null);
 
-```
-whatsapp-core/
-├── auth.js             # Gera o QR e autentica no WhatsApp
-├── leadtalks.js        # Extrai contatos, grupos e envia ao Supabase
-├── sender.js           # Envia mensagens a partir da fila (queue)
-├── supabase.js         # Conexão centralizada com Supabase
-├── .env                # Variáveis de ambiente (configuração)
-├── package.json        # Scripts e dependências
-├── data/               # Arquivos .json locais (somente em dev)
-├── auth/               # Armazena credenciais da sessão WhatsApp
-```
+const [loading, setLoading] = useState(true);
+const [contatos, setContatos] = useState<Contato[]>([]);
+const [grupos, setGrupos] = useState<Grupo[]>([]);
+const [membrosPorGrupo, setMembrosPorGrupo] = useState<MembrosPorGrupo>({});
+const [progressoSync, setProgressoSync] = useState<ProgressoSync | null>(null);
+// ... (outros estados como filtroNome, mensagem, etc.)
 
----
+const fetchContatos = useCallback(async () => {
+if (!user) return;
+try {
+const { data: { session } } = await supabase.auth.getSession();
+const token = session?.access_token;
+if (!token) return;
+const pessoasRes = await fetch(`${BACKEND_URL}/api/pessoas?usuario_id=${user.id}`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.json());
+setContatos(Array.isArray(pessoasRes) ? pessoasRes : []);
+} catch (e) { console.error("Falha ao buscar contatos", e); }
+}, [user, supabase]);
 
-## ⚙️ Variáveis de ambiente
+useEffect(() => {
+if (!user) return;
 
-Crie um arquivo `.env` com o seguinte conteúdo:
+    // Busca inicial (pode vir vazia, e está tudo bem)
+    fetchContatos();
 
-```
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
-ENV_MODE=development   # Use 'production' na VM Oracle
-```
+    const setupSocket = async () => {
+      if (socketRef.current) return;
 
----
+      const res = await fetch(`${BACKEND_URL}/socketUrl`);
+      const { socketUrl } = await res.json();
+      const socket = io(socketUrl, { transports: ["websocket"], path: "/socket.io" });
+      socketRef.current = socket;
 
-## 🛠️ Scripts disponíveis
+      socket.on('connect', () => socket.emit('join', user.id));
 
-| Comando        | Descrição                                  |
-| -------------- | ------------------------------------------ |
-| `npm run auth` | Gera o QR Code e conecta ao WhatsApp       |
-| `npm run lead` | Extrai contatos/grupos e envia ao Supabase |
-| `npm run send` | Envia mensagens da fila (`queue`)          |
+      // Ouve o evento que diz que a lista de CONTATOS está pronta
+      socket.on('contacts_sync_complete', () => {
+        console.log('[Home] ✅ Sincronização de contatos concluída! A buscar lista de contatos...');
+        fetchContatos();
+      });
 
----
+      // Ouve as atualizações de CADA GRUPO à medida que são sincronizados
+      socket.on('group_sync_update', (data: { grupo: Grupo, membros: Membro[], progresso: ProgressoSync }) => {
+        console.log(`[Home] 🔄 Recebida atualização para o grupo: ${data.grupo.nome}`);
+        // Adiciona/atualiza o grupo na lista
+        setGrupos(prevGrupos => {
+            const index = prevGrupos.findIndex(g => g.grupo_jid === data.grupo.grupo_jid);
+            if (index > -1) {
+                const novosGrupos = [...prevGrupos];
+                novosGrupos[index] = data.grupo;
+                return novosGrupos;
+            }
+            return [...prevGrupos, data.grupo];
+        });
+        // Adiciona/atualiza os membros do grupo
+        setMembrosPorGrupo(prevMembros => ({
+            ...prevMembros,
+            [data.grupo.grupo_jid]: data.membros
+        }));
+        setProgressoSync(data.progresso);
+      });
 
-## 💡 Funcionalidade inteligente
+      socket.on('full_sync_complete', () => {
+        console.log('[Home] ✅ Sincronização COMPLETA finalizada.');
+        setProgressoSync(null); // Esconde a mensagem de progresso
+      });
+    };
 
-Este projeto detecta automaticamente se está em ambiente local ou de produção:
+    setupSocket();
+    setLoading(false);
 
-- **Local (ENV_MODE=development)**:
+    return () => {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
 
-  - Salva arquivos `.json` em `/data`
-  - Conecta e envia dados normalmente ao Supabase
+}, [user, fetchContatos]);
 
-- **VM Oracle (ENV_MODE=production)**:
-  - **Não salva nenhum `.json` local**
-  - Tudo é enviado ao Supabase diretamente
-
----
-
-## 🚀 Rodando na VM Oracle (produção)
-
-1. Copie a pasta para a VM ou clone a branch `whatsapp-core`
-2. Crie e configure o `.env` com `ENV_MODE=production`
-3. Instale as dependências:
-
-```bash
-npm install
-```
-
-4. Inicie com:
-
-```bash
-npm run auth     # Conecta e salva sessão
-npm run lead     # Extrai contatos/grupos para Supabase
-npm run send     # Envia mensagens da fila
-```
-
-5. Para rodar automaticamente com PM2:
-
-```bash
-npm install -g pm2
-pm2 start leadtalks.js --name leadtalk
-pm2 save
-```
-
----
-
-## 🧠 Requisitos
-
-- Node.js 18+
-- WhatsApp em funcionamento para autenticação
-- Banco Supabase com tabelas: `contatos`, `grupos`, `membros_grupos`, `queue`, `log`, `sessao`
-
----
-
-## 🧩 Integrado com:
-
-- ✅ Supabase (banco e autenticação)
-- ✅ Vercel (frontend e backend `/api`)
-- ✅ VM Oracle (execução 24/7)
-
----
-
-Feito por [Caio Zafalon]
+// ... (o resto do seu componente JSX)
+// Adicione uma UI para mostrar o progresso da sincronização:
+// {progressoSync && (
+// <p>Sincronizando grupos: {progressoSync.atual} de {progressoSync.total}...</p>
+// )}
+}

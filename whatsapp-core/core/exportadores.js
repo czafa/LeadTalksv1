@@ -5,17 +5,14 @@ import { upsertContatos, upsertGrupos, upsertMembros } from "./supabaseSync.js";
 /**
  * PASSO 1: Coleta todos os "humanos" (contatos e participantes de grupos),
  * cria uma lista única e a salva na tabela 'contatos'.
- * Esta função cria a nossa fonte única da verdade para pessoas.
  */
-async function exportarContatosUnicos(store, sock, usuario_id) {
-  // Pega os contatos salvos na agenda
+export async function exportarContatosUnicos(store, sock, usuario_id) {
   const contatosDaAgenda = Object.values(store.contacts).map((c) => ({
     numero: c.id.split("@")[0],
     nome: c.name || c.notify || c.pushname || c.id.split("@")[0],
     usuario_id: usuario_id,
   }));
 
-  // Pega todos os participantes de todos os grupos
   const chats = store.chats.all().filter((chat) => chat.id.endsWith("@g.us"));
   let participantesDeGrupos = [];
   for (const chat of chats) {
@@ -23,7 +20,6 @@ async function exportarContatosUnicos(store, sock, usuario_id) {
       const metadata = await sock.groupMetadata(chat.id);
       const participantes = metadata.participants.map((p) => ({
         numero: p.id.split("@")[0],
-        // O nome aqui é o 'pushname', que servirá de fallback se o contato não estiver na agenda
         nome: store.contacts[p.id]?.pushname || p.id.split("@")[0],
         usuario_id: usuario_id,
       }));
@@ -35,14 +31,9 @@ async function exportarContatosUnicos(store, sock, usuario_id) {
     }
   }
 
-  // Junta as duas listas (agenda + participantes)
   const todosOsContatos = [...contatosDaAgenda, ...participantesDeGrupos];
-
-  // Remove duplicatas, garantindo que cada número apareça apenas uma vez
   const contatosUnicos = Object.values(
     todosOsContatos.reduce((acc, contato) => {
-      // A lógica de 'upsert' já lida com a priorização de nomes,
-      // mas podemos fazer uma pré-filtragem aqui para garantir qualidade.
       acc[contato.numero] = acc[contato.numero] || contato;
       return acc;
     }, {})
@@ -55,7 +46,7 @@ async function exportarContatosUnicos(store, sock, usuario_id) {
 }
 
 /**
- * PASSO 2: Itera sobre os grupos e salva apenas as RELAÇÕES
+ * PASSO 2: Processa UM ÚNICO grupo e salva as suas relações
  * na tabela 'membros_grupos'.
  */
 export async function exportarRelacoesDeGrupos(
@@ -85,32 +76,9 @@ export async function exportarRelacoesDeGrupos(
     admin: p.admin === "admin" || p.admin === "superadmin",
   }));
 
-  // O 'upsert' lida com a inserção ou atualização
   await upsertGrupos([grupoParaSalvar]);
   await upsertMembros(membrosParaSalvar);
-}
 
-/**
- * PASSO 3: Orquestra a sincronização completa, seguindo a ordem correta.
- */
-export async function sincronizarContatosEmBackground(sock, store, usuario_id) {
-  console.log(
-    `[Sync] Iniciando sincronização em background para ${usuario_id}`
-  );
-  try {
-    // Primeiro, popula a tabela 'contatos' com todas as pessoas únicas
-    await exportarContatosUnicos(store, sock, usuario_id);
-
-    // Depois, popula as tabelas 'grupos' e 'membros_grupos' (as relações)
-    await exportarRelacoesDeGrupos(sock, store, usuario_id);
-
-    console.log(
-      `[Sync] Sincronização em background concluída para ${usuario_id}`
-    );
-  } catch (error) {
-    console.error(
-      `[Sync] Erro durante a sincronização para ${usuario_id}:`,
-      error
-    );
-  }
+  // ✅ RETORNA OS DADOS PROCESSADOS
+  return { grupoSalvo: grupoParaSalvar, membrosSalvos: membrosParaSalvar };
 }
