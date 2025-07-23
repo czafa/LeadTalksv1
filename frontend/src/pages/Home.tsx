@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import io from "socket.io-client";
 import type { Socket } from "socket.io-client";
 
+// URL da API importada das variáveis de ambiente
 const BACKEND_URL = import.meta.env.VITE_API_URL;
 
 // Definição de tipos para clareza

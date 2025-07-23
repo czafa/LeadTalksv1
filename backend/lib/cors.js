@@ -4,6 +4,7 @@
 // Usamos a URL do erro de CORS que vimos anteriormente.
 const allowedOrigins = [
   "https://lead-talksv1.vercel.app",
+  "https://lead-backsv1.vercel.app",
   "http://localhost:5173", // Ambiente de dev
   "http://localhost:4173", // Ambiente de dev
 ];
