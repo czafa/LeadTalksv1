@@ -1,36 +1,36 @@
 // backend/lib/cors.js
 
 // Lista de domínios (origens) que têm permissão para acessar sua API.
-// Usamos a URL do erro de CORS que vimos anteriormente.
 const allowedOrigins = [
   "https://lead-talksv1.vercel.app",
   "https://lead-backsv1.vercel.app",
-  "http://localhost:5173", // Ambiente de dev
-  "http://localhost:4173", // Ambiente de dev
+  "http://localhost:5173", // Dev Vite
+  "http://localhost:4173", // Dev Vite preview
 ];
 
 // Esta é a ÚNICA função que o arquivo precisa exportar.
 export function configurarCors(req, res) {
-  const origin = req.headers.origin;
+  const origin = req.headers.origin ?? "";
 
-  // Permite a origem se ela estiver na lista de permissões
+  console.log("🛡️ CORS Origin recebido:", origin);
+
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
+    res.setHeader("Access-Control-Max-Age", "86400");
+
+    if (req.method === "OPTIONS") {
+      res.status(204).end(); // No Content
+      return true;
+    }
+  } else {
+    console.warn("🚫 Origem não permitida pelo CORS:", origin);
   }
-  // Permite cookies e credenciais
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  // Cabeçalhos que o navegador do cliente tem permissão para usar na requisição
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  // Cacheia a resposta do preflight por 24 horas
-  res.setHeader("Access-Control-Max-Age", "86400");
-
-  // Para requisições OPTIONS (preflight), respondemos imediatamente com sucesso.
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return true; // Indica que a requisição foi tratada e deve parar aqui.
-  }
-
-  return false; // Indica que a requisição deve continuar para a lógica do endpoint.
+  return false; // Continua para a lógica da rota
 }
