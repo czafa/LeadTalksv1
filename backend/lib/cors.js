@@ -4,6 +4,7 @@
 const allowedOrigins = [
   "https://lead-talksv1.vercel.app",
   "https://lead-backsv1.vercel.app",
+  "https://lead-backend-tan.vercel.app",
   "http://localhost:5173", // Dev Vite
   "http://localhost:4173", // Dev Vite preview
 ];
