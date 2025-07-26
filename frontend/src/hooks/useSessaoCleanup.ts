@@ -25,7 +25,7 @@ export function useSessaoCleanup() {
         sem_token: true, // 👈 se quiser tratar no backend
       });
 
-      const url = `${import.meta.env.VITE_API_URL}/api/sessao`;
+      const url = `${import.meta.env.VITE_API_URL}/sessao`;
 
       const blob = new Blob([body], { type: "application/json" });
       navigator.sendBeacon(url, blob);
