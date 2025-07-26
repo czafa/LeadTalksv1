@@ -36,21 +36,21 @@ export default function Login() {
       return;
     }
 
-    //const BACKEND_URL = import.meta.env.VITE_API_URL;
+    const BACKEND_URL = import.meta.env.VITE_API_URL;
 
-    // await fetch(`${BACKEND_URL}/api/sessao`, {
-    //   // envia para o /backend o json com o usuario_id, logado e conectado.
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //     Authorization: `Bearer ${token}`,
-    //   },
-    //   body: JSON.stringify({
-    //     usuario_id,
-    //     logado: true,
-    //     conectado: false,
-    //   }),
-    // });
+    await fetch(`${BACKEND_URL}/sessao`, {
+      // envia para o /backend o json com o usuario_id, logado e conectado.
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        usuario_id,
+        logado: true,
+        conectado: false,
+      }),
+    });
 
     navigate("/qr");
   };
