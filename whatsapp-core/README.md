@@ -104,3 +104,5 @@ if (!user) return;
 // <p>Sincronizando grupos: {progressoSync.atual} de {progressoSync.total}...</p>
 // )}
 }
+
+// ta fodaaaaaaa
