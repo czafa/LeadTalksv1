@@ -38,7 +38,7 @@ export default function Login() {
 
     const BACKEND_URL = import.meta.env.VITE_API_URL;
 
-    await fetch(`${BACKEND_URL}/sessao`, {
+    await fetch(`${BACKEND_URL}/api/sessao`, {
       // envia para o /backend o json com o usuario_id, logado e conectado.
       method: "POST",
       headers: {
