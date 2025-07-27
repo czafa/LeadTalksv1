@@ -3,11 +3,11 @@
 ├── README.md
 ├── backend
 │   ├── api
-│   │   ├── contatos.js
 │   │   ├── enviar.js
 │   │   ├── grupos.js
 │   │   ├── iniciar-leadtalk.js
 │   │   ├── membros-grupos.js
+│   │   ├── pessoas.js
 │   │   ├── qr.js
 │   │   ├── sessao.js
 │   │   └── socketUrl.js
@@ -22,11 +22,13 @@
 │   ├── package.json
 │   └── vercel.json
 ├── estrutura.txt
-├── estrutural3.txt
 ├── frontend
 │   ├── README.md
 │   ├── dist
 │   │   ├── assets
+│   │   │   ├── browser-_4x5YDvs.js
+│   │   │   ├── index-BZ6p2UxN.js
+│   │   │   └── index-De43wncO.css
 │   │   ├── index.html
 │   │   └── vite.svg
 │   ├── eslint.config.js
@@ -40,14 +42,26 @@
 │   │   ├── App.css
 │   │   ├── App.tsx
 │   │   ├── assets
+│   │   │   └── react.svg
 │   │   ├── components
+│   │   │   ├── LayoutProtegido.tsx
+│   │   │   └── ProtectedRoute.tsx
 │   │   ├── hooks
+│   │   │   ├── useSessaoCleanup.ts
+│   │   │   └── userQr.ts
 │   │   ├── index.css
 │   │   ├── lib
+│   │   │   └── supabase.ts
 │   │   ├── main.tsx
 │   │   ├── pages
-│   │   ├── pasta src (front).txt
+│   │   │   ├── Home.tsx
+│   │   │   ├── Login.tsx
+│   │   │   ├── QR.tsx
+│   │   │   ├── Recover.tsx
+│   │   │   └── Register.tsx
 │   │   ├── utils
+│   │   │   ├── api.js
+│   │   │   └── utils.js
 │   │   └── vite-env.d.ts
 │   ├── tailwind.config.ts
 │   ├── tsconfig.app.json
@@ -57,26 +71,20 @@
 │   └── vite.config.ts
 └── whatsapp-core
     ├── README.md
-    ├── api
-    │   ├── enviar.js
-    │   └── start-session.js
     ├── auth
     ├── core
     │   ├── exportadores.js
     │   ├── qrManager.js
-    │   ├── socket.js
     │   ├── socketManager.js
-    │   └── supabaseSync.js
-    ├── data
+    │   ├── supabaseSync.js
+    │   └── syncManager.js
     ├── filaProcessor.js
-    ├── leadtalks.js
     ├── ngrok-sync.js
     ├── package-lock.json
     ├── package.json
-    ├── saida_concatenada.txt
     ├── sender.js
     ├── server.js
     ├── start-server.js
     └── supabase.js
 
-20 directories, 60 files
+18 directories, 70 files
