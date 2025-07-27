@@ -9,11 +9,9 @@ const allowedOrigins = [
   "http://localhost:4173", // Dev Vite preview
 ];
 
-// Esta é a ÚNICA função que o arquivo precisa exportar.
 export function configurarCors(req, res) {
-  const origin = req.headers.origin ?? "";
-
-  console.log("🛡️ CORS Origin recebido:", origin);
+  const origin = req.headers.origin || req.headers.referer || "";
+  console.log("💙 CORS Origin recebido:", origin);
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
@@ -29,9 +27,11 @@ export function configurarCors(req, res) {
       res.status(204).end(); // No Content
       return true;
     }
-  } else {
-    console.warn("🚫 Origem não permitida pelo CORS:", origin);
+
+    return false; // continua para a rota
   }
 
-  return false; // Continua para a lógica da rota
+  console.warn("❌ Origem não permitida pelo CORS:", origin);
+  res.status(403).end("CORS Forbidden");
+  return true; // bloqueia a rota
 }
