@@ -6,7 +6,6 @@ import { supabase } from "../lib/supabase.js";
 import { validarRequisicaoSessao } from "../lib/secureRequest.js";
 
 export default async function handler(req, res) {
-  // 2. Todo o bloco de CORS antigo foi substituído por esta única linha
   if (configurarCors(req, res)) {
     return;
   }

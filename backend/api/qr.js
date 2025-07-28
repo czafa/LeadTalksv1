@@ -1,8 +1,8 @@
 // GitHub/LeadTalksv1/backend/api/qr.js
 
 // 1. A importação foi trocada para a nova função
-import { configurarCors } from "../lib/cors.js";
-import { supabase } from "../lib/supabase.js";
+import { configurarCors } from "./_lib/cors.js";
+import { supabase } from "./_lib/supabase.js";
 
 /**
  * Esta API tem a responsabilidade ÚNICA de ler o QR code mais recente

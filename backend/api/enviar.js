@@ -1,10 +1,10 @@
 // backend/api/enviar.js
 
 // 1. A importação foi trocada para a nova função
-import { configurarCors } from "../lib/cors.js";
-import { supabase } from "../lib/supabase.js";
-import { getUserIdFromRequest } from "../lib/auth.js";
-import { getNgrokUrl } from "../lib/getNgrokUrl.js";
+import { configurarCors } from "./_lib/cors.js";
+import { supabase } from "./_lib/supabase.js";
+import { getUserIdFromRequest } from "./_lib/auth.js";
+import { getNgrokUrl } from "./_lib/getNgrokUrl.js";
 
 export default async function handler(req, res) {
   // 2. Bloco de CORS antigo foi substituído por esta única linha
