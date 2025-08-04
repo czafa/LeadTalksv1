@@ -1,10 +1,7 @@
-// lib/secureRequest.js
 import { supabase } from "./supabase.js";
 
 export async function validarRequisicaoSessao(req) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
   const origin = req.headers.origin;
-  const body = req.body;
 
   // 🔒 Verifica origem da requisição
   const allowedOrigins = [
@@ -15,6 +12,16 @@ export async function validarRequisicaoSessao(req) {
   if (!allowedOrigins.includes(origin)) {
     return { autorizado: false, erro: "Origem não autorizada", status: 403 };
   }
+
+  // ✅ Bloqueia preflight e métodos que não devem validar
+  if (req.method === "OPTIONS") {
+    return { autorizado: true }; // Permitir preflight sem travar
+  }
+
+  // === A partir daqui, é seguro acessar o body e headers ===
+
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  const body = req.body;
 
   // ✅ Caso com token (login completo)
   if (token) {
@@ -41,7 +48,6 @@ export async function validarRequisicaoSessao(req) {
     };
   }
 
-  // ❌ Qualquer outro caso
   return {
     autorizado: false,
     erro: "Requisição não autorizada",

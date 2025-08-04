@@ -1,9 +1,9 @@
 // backend/api/sessao.js
 
 // 1. A importação foi trocada para a nova função
-import { configurarCors } from "../lib/cors.js";
-import { supabase } from "../lib/supabase.js";
-import { validarRequisicaoSessao } from "../lib/secureRequest.js";
+import { configurarCors } from "./_lib/cors.js";
+import { supabase } from "./_lib/supabase.js";
+import { validarRequisicaoSessao } from "./_lib/secureRequest.js";
 
 export default async function handler(req, res) {
   if (configurarCors(req, res)) {
