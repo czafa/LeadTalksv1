@@ -16,7 +16,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 async function iniciarSessaoBackend(usuario_id: string, token: string) {
   try {
     const res = await fetch(
-      `${import.meta.env.VITE_API_URL}/iniciar-leadtalk`,
+      `${import.meta.env.VITE_API_URL}/api/iniciar-leadtalk`,
       {
         method: "POST",
         headers: {
@@ -109,7 +109,9 @@ export default function QR() {
         qrCanal = esperarQrCode(usuario_id, canvasRef.current || undefined);
 
         // 4. Busca a URL do socket e estabelece a conexão
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/socketUrl`);
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/socketUrl`
+        );
         const { socketUrl } = await res.json();
         console.log(
           `[Frontend][QR.tsx][iniciar] 🌐 Obtida URL do socket: ${socketUrl}`

@@ -1,24 +1,38 @@
-// backend/api/socket-url.js
+// backend/api/socketUrl.js
 
-// 1. A importação foi trocada para a nova função
 import { configurarCors } from "./_lib/cors.js";
 import { supabase } from "./_lib/supabase.js";
 
 export default async function handler(req, res) {
-  // 2. A chamada de CORS foi atualizada para o novo padrão
   if (configurarCors(req, res)) {
     return;
   }
 
-  const { data, error } = await supabase
-    .from("configuracoes")
-    .select("valor")
-    .eq("chave", "ngrok_url")
-    .single();
+  // Sugestão 2: Adicionar Log de Início
+  console.log("📦 [API /socketUrl] Requisição recebida");
 
-  if (error || !data?.valor) {
-    return res.status(500).json({ error: "Erro ao buscar socket URL" });
+  // Sugestão 1: Envolver em try...catch
+  try {
+    const { data, error } = await supabase
+      .from("configuracoes")
+      .select("valor")
+      .eq("chave", "ngrok_url")
+      .single();
+
+    if (error || !data?.valor) {
+      // Sugestão 2: Adicionar Log de Erro
+      console.error(
+        "❌ [API /socketUrl] Erro ao buscar socket URL do Supabase:",
+        error
+      );
+      return res.status(500).json({ error: "Erro ao buscar socket URL" });
+    }
+
+    // Sugestão 2: Adicionar Log de Sucesso
+    console.log("✅ [API /socketUrl] URL do socket encontrada e retornada.");
+    return res.status(200).json({ socketUrl: data.valor });
+  } catch (err) {
+    console.error("❌ [API /socketUrl] Erro inesperado no handler:", err);
+    return res.status(500).json({ error: "Erro interno no servidor." });
   }
-
-  return res.status(200).json({ socketUrl: data.valor });
 }
